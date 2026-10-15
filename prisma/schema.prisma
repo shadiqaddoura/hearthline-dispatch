@@ -1,0 +1,515 @@
+// Hearthline Dispatch — database schema.
+//
+// Four ideas are kept in separate places so availability is never double-counted:
+//   physical quantity  -> StockBalance (per location, product and condition)
+//   condition          -> StockCondition on the balance (WORKING / BROKEN)
+//   serial verification-> EquipmentUnit.verification (serialised products only)
+//   reservations       -> Reservation (quantity promised to a job, never subtracted from the balance)
+//
+// Every balance change has a StockMovement written in the same transaction.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Fleet ─────────────────────────────
+
+enum VanStatus {
+  ACTIVE
+  GARAGE
+  SOLD
+}
+
+model Technician {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  van  Van?
+  jobs Job[]
+
+  @@map("technicians")
+}
+
+model Van {
+  id                  String    @id @default(cuid())
+  code                String    @unique // "V01", "P1"
+  plate               String?   @unique
+  zone                String?
+  status              VanStatus @default(ACTIVE)
+  statusNote          String?
+  statusSince         DateTime? @db.Date
+  isPool              Boolean   @default(false)
+  // The driver. Changing it never moves stock: stock belongs to the location.
+  currentTechnicianId String?   @unique
+  locationId          String    @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  currentTechnician Technician?  @relation(fields: [currentTechnicianId], references: [id])
+  location          Location     @relation(fields: [locationId], references: [id])
+  jobs              Job[]
+  restockJobs       RestockJob[]
+
+  @@map("vans")
+}
+
+// ─────────────────────────── Customers ───────────────────────────
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  branches Branch[]
+
+  @@map("customers")
+}
+
+model Branch {
+  id         String   @id @default(cuid())
+  customerId String
+  name       String
+  zone       String?
+  createdAt  DateTime @default(now())
+
+  customer  Customer        @relation(fields: [customerId], references: [id])
+  jobs      Job[]
+  units     EquipmentUnit[]
+  movements StockMovement[]
+
+  @@unique([customerId, name])
+  @@map("branches")
+}
+
+// ──────────────────────────── Products ───────────────────────────
+
+model Product {
+  id         String  @id @default(cuid())
+  sku        String  @unique
+  name       String
+  serialised Boolean
+  // Quantities are always stored in the base unit (e.g. rolls of paper).
+  baseUnit   String  @default("each")
+  packUnit   String? // e.g. "box"
+  packSize   Int? // base units per pack, e.g. 50 rolls per box
+  vanMinimum Int     @default(0) // in base units
+
+  // Automatic van restocking is configurable per product.
+  autoRestock              Boolean @default(true)
+  restockPolicyNeedsReview Boolean @default(false)
+  restockPolicyNote        String?
+
+  balances        StockBalance[]
+  movements       StockMovement[]
+  reservations    Reservation[]
+  units           EquipmentUnit[]
+  jobItems        JobItem[]
+  completionLines JobCompletionLine[]
+  restockItems    RestockItem[]
+  restockReturns  RestockReturn[]
+  corrections     StockCorrection[]
+
+  @@map("products")
+}
+
+// ──────────────────────────── Inventory ──────────────────────────
+
+enum LocationKind {
+  VAN
+  HUB
+}
+
+enum StockCondition {
+  WORKING
+  BROKEN
+}
+
+// A place stock physically sits. Balances are tracked for VAN locations.
+// The HUB location exists so movements can name it as source/destination;
+// hub shelf counts are not tracked in this milestone.
+model Location {
+  id        String       @id @default(cuid())
+  kind      LocationKind
+  name      String       @unique
+  createdAt DateTime     @default(now())
+
+  van          Van?
+  balances     StockBalance[]
+  movementsOut StockMovement[]   @relation("MovementFrom")
+  movementsIn  StockMovement[]   @relation("MovementTo")
+  reservations Reservation[]
+  units        EquipmentUnit[]
+  corrections  StockCorrection[]
+
+  @@map("locations")
+}
+
+// Current physical count. May be negative only when imported that way;
+// such balances are raised as import issues and new operations refuse to go below zero.
+model StockBalance {
+  locationId String
+  productId  String
+  condition  StockCondition
+  quantity   Int
+  updatedAt  DateTime       @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@id([locationId, productId, condition])
+  @@map("stock_balances")
+}
+
+enum StockMovementType {
+  OPENING_BALANCE // stock-book snapshot loaded by the import
+  JOB_DELIVERY // van -> customer branch
+  BROKEN_COLLECTION // customer branch -> van (dead unit pulled out)
+  TRANSFER // van -> van, recorded with both ends
+  CORRECTION // counted quantity differs from the balance
+  RESTOCK_COLLECTION // hub -> van
+  BROKEN_RETURN // van -> hub
+}
+
+// Traceability for every balance change. `quantity` is always positive;
+// direction is given by fromLocation / toLocation.
+model StockMovement {
+  id             String            @id @default(cuid())
+  type           StockMovementType
+  productId      String
+  condition      StockCondition
+  quantity       Int
+  fromLocationId String?
+  toLocationId   String?
+  branchId       String?
+  jobId          String?
+  restockJobId   String?
+  correctionId   String?
+  importRowId    String?
+  serials        String[]
+  performedBy    String
+  note           String?
+  createdAt      DateTime          @default(now())
+
+  product      Product          @relation(fields: [productId], references: [id])
+  fromLocation Location?        @relation("MovementFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location?        @relation("MovementTo", fields: [toLocationId], references: [id])
+  branch       Branch?          @relation(fields: [branchId], references: [id])
+  job          Job?             @relation(fields: [jobId], references: [id])
+  restockJob   RestockJob?      @relation(fields: [restockJobId], references: [id])
+  correction   StockCorrection? @relation(fields: [correctionId], references: [id])
+  importRow    ImportSourceRow? @relation(fields: [importRowId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("stock_movements")
+}
+
+model StockCorrection {
+  id                String         @id @default(cuid())
+  locationId        String
+  productId         String
+  condition         StockCondition
+  previousQuantity  Int
+  correctedQuantity Int
+  reason            String
+  correctedBy       String
+  correctedAt       DateTime       @default(now())
+
+  location  Location        @relation(fields: [locationId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
+  movements StockMovement[]
+
+  @@map("stock_corrections")
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED // job cancelled or reassigned
+  CONSUMED // job completed
+}
+
+// Stock promised to a job at a location. Does not change the physical balance.
+model Reservation {
+  id            String            @id @default(cuid())
+  jobId         String
+  locationId    String
+  productId     String
+  quantity      Int
+  status        ReservationStatus @default(ACTIVE)
+  releaseReason String?
+  createdAt     DateTime          @default(now())
+  closedAt      DateTime?
+
+  job      Job      @relation(fields: [jobId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([locationId, productId, status])
+  @@index([jobId, status])
+  @@map("reservations")
+}
+
+enum UnitVerification {
+  VERIFIED // serial number recorded
+  NEEDS_VERIFICATION // physically counted, serial unknown: not assignable
+}
+
+enum UnitStatus {
+  IN_STOCK // at a tracked location (a van)
+  INSTALLED // at a customer branch
+  AT_HUB // handed back to the hub
+  WRITTEN_OFF // removed by a stock correction
+}
+
+// One row per physical serialised unit. For serialised products the number of
+// IN_STOCK units at a location in a condition equals the (non-negative) balance.
+model EquipmentUnit {
+  id           String           @id @default(cuid())
+  productId    String
+  serialNumber String?          @unique
+  verification UnitVerification
+  condition    StockCondition
+  status       UnitStatus
+  locationId   String?
+  branchId     String?
+  verifiedAt   DateTime?
+  verifiedBy   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  product  Product   @relation(fields: [productId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+  branch   Branch?   @relation(fields: [branchId], references: [id])
+
+  @@index([locationId, productId, status, condition, verification])
+  @@map("equipment_units")
+}
+
+// ────────────────────────────── Jobs ─────────────────────────────
+
+enum JobType {
+  DELIVERY
+  INSTALLATION
+  REPAIR
+}
+
+enum JobStatus {
+  REQUESTED
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Why an open request cannot go on a van right now. Separate from status.
+enum BlockingReason {
+  NO_ELIGIBLE_VAN // no active, driven van has enough eligible stock
+  UNITS_NEED_VERIFICATION // stock exists but serials are unverified
+  IMPORT_NEEDS_REVIEW // imported with an unclear status or incomplete data
+}
+
+model Job {
+  id             String          @id @default(cuid())
+  reference      String          @unique
+  type           JobType
+  status         JobStatus       @default(REQUESTED)
+  branchId       String
+  // The day the customer asked. Never overwritten; null only when the source omitted it.
+  requestedOn    DateTime?       @db.Date
+  // Manual scheduling: the planned day and the order within the van's day.
+  scheduledFor   DateTime?       @db.Date
+  sequence       Int?
+  vanId          String?
+  technicianId   String?
+  blockingReason BlockingReason?
+  blockingDetail String?
+  notes          String?
+  // Status text exactly as it appeared in the source sheet, when imported.
+  sourceStatus   String?
+  importRowId    String?         @unique
+  assignedAt     DateTime?
+  startedAt      DateTime?
+  completedOn    DateTime?       @db.Date
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  branch       Branch           @relation(fields: [branchId], references: [id])
+  van          Van?             @relation(fields: [vanId], references: [id])
+  technician   Technician?      @relation(fields: [technicianId], references: [id])
+  importRow    ImportSourceRow? @relation(fields: [importRowId], references: [id])
+  items        JobItem[]
+  reservations Reservation[]
+  completion   JobCompletion?
+  movements    StockMovement[]
+
+  @@index([status, scheduledFor])
+  @@map("jobs")
+}
+
+model JobItem {
+  id        String @id @default(cuid())
+  jobId     String
+  productId String
+  quantity  Int
+
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([jobId, productId])
+  @@map("job_items")
+}
+
+enum CompletionLineKind {
+  DELIVERED // delivered or installed at the branch
+  COLLECTED_BROKEN // dead unit brought back into the van
+}
+
+// One per job (unique jobId): completing twice cannot deduct stock twice.
+model JobCompletion {
+  id          String   @id @default(cuid())
+  jobId       String   @unique
+  completedBy String
+  completedAt DateTime @default(now())
+  note        String?
+
+  job   Job                 @relation(fields: [jobId], references: [id])
+  lines JobCompletionLine[]
+
+  @@map("job_completions")
+}
+
+model JobCompletionLine {
+  id           String             @id @default(cuid())
+  completionId String
+  productId    String
+  kind         CompletionLineKind
+  quantity     Int
+  serials      String[]
+
+  completion JobCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+  product    Product       @relation(fields: [productId], references: [id])
+
+  @@map("job_completion_lines")
+}
+
+// ─────────────────────────── Restocking ──────────────────────────
+
+enum RestockStatus {
+  OPEN
+  CLOSED
+}
+
+// At most one OPEN restock job per van (partial unique index in the migration).
+// Creating or updating it never changes inventory; confirming a collection does.
+model RestockJob {
+  id          String        @id @default(cuid())
+  vanId       String
+  status      RestockStatus @default(OPEN)
+  closeReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  closedAt    DateTime?
+
+  van       Van             @relation(fields: [vanId], references: [id])
+  items     RestockItem[]
+  returns   RestockReturn[]
+  movements StockMovement[]
+
+  @@index([vanId, status])
+  @@map("restock_jobs")
+}
+
+// The pick list. Quantities in the product's base unit.
+model RestockItem {
+  id                  String @id @default(cuid())
+  restockJobId        String
+  productId           String
+  outstandingQuantity Int
+  collectedQuantity   Int    @default(0)
+
+  restockJob RestockJob @relation(fields: [restockJobId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([restockJobId, productId])
+  @@map("restock_items")
+}
+
+// Broken equipment handed back to the hub, tracked apart from working stock collected.
+model RestockReturn {
+  id           String   @id @default(cuid())
+  restockJobId String
+  productId    String
+  quantity     Int
+  serials      String[]
+  returnedBy   String
+  returnedAt   DateTime @default(now())
+
+  restockJob RestockJob @relation(fields: [restockJobId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@map("restock_returns")
+}
+
+// ───────────────────────────── Import ────────────────────────────
+
+model ImportBatch {
+  id         String   @id @default(cuid())
+  fileName   String
+  importedAt DateTime @default(now())
+  summary    Json
+
+  rows   ImportSourceRow[]
+  issues ImportIssue[]
+
+  @@map("import_batches")
+}
+
+// Each original spreadsheet row, preserved verbatim with its sheet and row number.
+model ImportSourceRow {
+  id        String @id @default(cuid())
+  batchId   String
+  sheet     String
+  rowNumber Int
+  raw       Json
+
+  batch     ImportBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  issues    ImportIssue[]
+  job       Job?
+  movements StockMovement[]
+
+  @@unique([batchId, sheet, rowNumber])
+  @@map("import_source_rows")
+}
+
+enum IssueSeverity {
+  INFO // normalised or decided something; worth knowing
+  WARNING // imported, but the value needs a human to confirm it
+  ERROR // could not be imported as written
+}
+
+model ImportIssue {
+  id          String        @id @default(cuid())
+  batchId     String
+  sourceRowId String?
+  severity    IssueSeverity
+  code        String
+  message     String
+  resolved    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  batch     ImportBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sourceRow ImportSourceRow? @relation(fields: [sourceRowId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, severity])
+  @@map("import_issues")
+}
