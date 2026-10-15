@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local env template is safe to commit
+!.env.example
+
+# generated Prisma client
+/generated/
