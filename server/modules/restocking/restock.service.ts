@@ -30,10 +30,8 @@ async function recalculateRestockForVan(tx: Tx, van: { id: string; locationId: s
     return;
   }
 
-  const [products, balances] = await Promise.all([
-    tx.product.findMany({ select: { id: true, vanMinimum: true, autoRestock: true } }),
-    tx.stockBalance.findMany({ where: { locationId: van.locationId, condition: "WORKING" } }),
-  ]);
+  const products = await tx.product.findMany({ select: { id: true, vanMinimum: true, autoRestock: true } });
+  const balances = await tx.stockBalance.findMany({ where: { locationId: van.locationId, condition: "WORKING" } });
   const needs = calculateRestockNeeds(products, new Map(balances.map((b) => [b.productId, b.quantity])));
 
   if (needs.length === 0) {

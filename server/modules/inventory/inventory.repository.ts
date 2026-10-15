@@ -19,19 +19,18 @@ export async function getBalance(tx: Tx, locationId: string, productId: string, 
  * reservations and verified unit counts in three grouped queries.
  */
 export async function loadStockFigures(tx: Tx, locationIds: string[]) {
-  const [balances, reservations, verified] = await Promise.all([
-    tx.stockBalance.findMany({ where: { locationId: { in: locationIds } } }),
-    tx.reservation.groupBy({
-      by: ["locationId", "productId"],
-      where: { locationId: { in: locationIds }, status: "ACTIVE" },
-      _sum: { quantity: true },
-    }),
-    tx.equipmentUnit.groupBy({
-      by: ["locationId", "productId"],
-      where: { locationId: { in: locationIds }, status: "IN_STOCK", condition: "WORKING", verification: "VERIFIED" },
-      _count: { _all: true },
-    }),
-  ]);
+  // Sequential on purpose: inside a transaction all queries share one connection.
+  const balances = await tx.stockBalance.findMany({ where: { locationId: { in: locationIds } } });
+  const reservations = await tx.reservation.groupBy({
+    by: ["locationId", "productId"],
+    where: { locationId: { in: locationIds }, status: "ACTIVE" },
+    _sum: { quantity: true },
+  });
+  const verified = await tx.equipmentUnit.groupBy({
+    by: ["locationId", "productId"],
+    where: { locationId: { in: locationIds }, status: "IN_STOCK", condition: "WORKING", verification: "VERIFIED" },
+    _count: { _all: true },
+  });
 
   const figures = new Map<string, StockFigures>();
   const entry = (locationId: string, productId: string) => {
@@ -66,10 +65,8 @@ function stockKey(locationId: string, productId: string) {
 }
 
 export async function buildStockLines(tx: Tx, locationId: string): Promise<StockLineDto[]> {
-  const [products, figures] = await Promise.all([
-    tx.product.findMany({ orderBy: { sku: "asc" } }),
-    loadStockFigures(tx, [locationId]),
-  ]);
+  const products = await tx.product.findMany({ orderBy: { sku: "asc" } });
+  const figures = await loadStockFigures(tx, [locationId]);
   return products
     .map((product) => {
       const f = figures.get(locationId, product.id);

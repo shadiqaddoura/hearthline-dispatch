@@ -31,10 +31,8 @@ async function loadCandidates(tx: Tx, vanIds?: string[]): Promise<EligibilityVan
     include: vanInclude,
     orderBy: { code: "asc" },
   });
-  const [products, figures] = await Promise.all([
-    tx.product.findMany({ select: { id: true, serialised: true } }),
-    loadStockFigures(tx, vans.map((v) => v.locationId)),
-  ]);
+  const products = await tx.product.findMany({ select: { id: true, serialised: true } });
+  const figures = await loadStockFigures(tx, vans.map((v) => v.locationId));
   const serialised = new Map(products.map((p) => [p.id, p.serialised]));
 
   return vans.map((van) => ({
