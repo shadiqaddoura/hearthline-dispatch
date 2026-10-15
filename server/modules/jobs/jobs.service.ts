@@ -31,6 +31,10 @@ export async function listJobs(filter: { status?: JobStatus; open?: boolean } = 
   return jobs.map((job) => toJobDto(job));
 }
 
+export async function listCustomers() {
+  return prisma.customer.findMany({ include: { branches: { orderBy: { name: "asc" } } }, orderBy: { name: "asc" } });
+}
+
 export async function getJob(jobId: string): Promise<JobDto> {
   return toJobDto(await findJob(prisma, jobId));
 }

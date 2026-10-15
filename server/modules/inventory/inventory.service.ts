@@ -20,6 +20,10 @@ import { moveStock } from "./stock-ledger";
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
+export async function listProducts() {
+  return prisma.product.findMany({ orderBy: { sku: "asc" } });
+}
+
 export async function getLocationStock(locationId: string): Promise<LocationStockDto> {
   const location = await prisma.location.findUnique({ where: { id: locationId }, include: { van: true } });
   if (!location) throw notFound("Location", locationId);

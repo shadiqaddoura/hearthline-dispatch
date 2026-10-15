@@ -33,8 +33,6 @@ export const scheduleJobRequest = z.object({
 
 export type ScheduleJobRequest = z.infer<typeof scheduleJobRequest>;
 
-export const startJobRequest = z.object({ startedBy: actorSchema });
-
 export const cancelJobRequest = z.object({
   reason: z.string().trim().min(3),
   cancelledBy: actorSchema,

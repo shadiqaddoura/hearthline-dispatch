@@ -12,8 +12,12 @@ export function toIsoDateOrNull(date: Date | null | undefined): string | null {
   return date ? toIsoDate(date) : null;
 }
 
+/** Hearthline operates in the UK: "today" is the London calendar day, wherever the server runs. */
+export const BUSINESS_TIME_ZONE = "Europe/London";
+
 export function todayIsoDate(now = new Date()): string {
-  return toIsoDate(now);
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIME_ZONE }).format(now);
 }
 
 /** Whole days from `from` to `to` (both calendar days). */
