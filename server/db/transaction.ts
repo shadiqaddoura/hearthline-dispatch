@@ -49,6 +49,8 @@ function conflictCode(error: unknown): string | null {
 //   3. the technician row (driver changes only)
 //   4. equipment unit rows named by serial, sorted (devices arriving at a van; never
 //      a device that is in stock in a van, which is refused before locking)
+//   5. a product row (editing or deleting a product; it takes every van location first
+//      so its restock pick-list refresh follows the same rule as any stock change)
 //
 // Rows that belong to one van (its balances, its in-stock units, its restock job) are
 // only ever written while that van's location is locked, so they cannot form a cycle
@@ -88,4 +90,16 @@ export async function lockUnitsBySerial(tx: Tx, serials: string[]) {
 
 export async function lockRestockJob(tx: Tx, restockJobId: string) {
   await tx.$queryRaw`SELECT id FROM restock_jobs WHERE id = ${restockJobId} FOR UPDATE`;
+}
+
+/**
+ * Locks a product row. Anything that inserts a row referring to the product (a movement,
+ * a job line, a reservation, an equipment unit...) takes a shared lock on it for the
+ * foreign key check, so while this is held no new reference can appear, and a product that
+ * is changed or deleted is judged against references that cannot change under it.
+ * Taken after any van location locks, like every other row lock (see the order above).
+ */
+export async function lockProduct(tx: Tx, productId: string) {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM products WHERE id = ${productId} FOR UPDATE`;
+  return rows.length > 0;
 }

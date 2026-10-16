@@ -7,18 +7,23 @@ import {
   DrawerHeader,
   DrawerHeaderTitle,
   MessageBar,
+  MessageBarActions,
   MessageBarBody,
   MessageBarTitle,
   OverlayDrawer,
+  Spinner,
   Text,
   makeStyles,
   tokens,
   useRestoreFocusSource,
+  useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import { DismissRegular } from "@fluentui/react-icons";
+import { DeleteRegular, DismissRegular, EditRegular } from "@fluentui/react-icons";
 import type { ProductDto } from "@/lib/contracts/products";
 import { describeUnit, describeVanMinimum, formatQuantity, pluralUnit } from "@/lib/products/catalogue";
+import { listReferences } from "@/lib/products/references";
 import { RestockPolicyBadge } from "./restock-policy-badge";
+import type { ProductDetailState } from "./use-product-detail";
 
 const useStyles = makeStyles({
   sku: { fontFamily: tokens.fontFamilyMonospace, color: tokens.colorNeutralForeground3 },
@@ -38,19 +43,31 @@ const useStyles = makeStyles({
   },
   hint: { display: "block", color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
   body: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXL },
-  footer: { color: tokens.colorNeutralForeground3 },
+  usage: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalS },
+  usageList: { margin: 0, paddingInlineStart: tokens.spacingHorizontalL },
+  muted: { color: tokens.colorNeutralForeground3 },
+  footer: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS },
 });
 
 interface ProductDetailsProps {
   /** Kept after closing so the panel still has content while it animates out. */
   product: ProductDto | null;
+  /** Where the product is used, from the server. */
+  usage: ProductDetailState;
   open: boolean;
   onClose: () => void;
+  onRetryUsage: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
-/** Read-only details of one product, in a panel over the catalogue. */
-export function ProductDetails({ product, open, onClose }: ProductDetailsProps) {
+/** Details of one product, in a panel over the catalogue, with where it is used and the Edit and Delete actions. */
+export function ProductDetails({ product, usage, open, onClose, onRetryUsage, onEdit, onDelete }: ProductDetailsProps) {
   const styles = useStyles();
+  const restoreFocusTarget = useRestoreFocusTarget();
+  // Edit and Delete need the server's answer about where the product is used.
+  const detail = usage.status === "ready" || usage.status === "loading" || usage.status === "error" ? usage.detail : null;
+  const actionsReady = detail !== null && detail.id === product?.id;
   // Returns focus to the row's link (marked with useRestoreFocusTarget) when the panel closes.
   const restoreFocusSource = useRestoreFocusSource();
 
@@ -127,15 +144,66 @@ export function ProductDetails({ product, open, onClose }: ProductDetailsProps) 
                 </>
               )}
             </dl>
+
+            <section className={styles.usage} aria-labelledby="product-usage-title">
+              <Text as="h3" id="product-usage-title" weight="semibold">
+                Where it is used
+              </Text>
+              <ProductUsage usage={usage} onRetry={onRetryUsage} />
+            </section>
           </DrawerBody>
 
-          <DrawerFooter>
-            <Text size={200} className={styles.footer}>
-              Read-only. Editing products isn&apos;t available yet.
-            </Text>
+          <DrawerFooter className={styles.footer}>
+            <Button {...restoreFocusTarget} appearance="primary" icon={<EditRegular />} disabledFocusable={!actionsReady} onClick={onEdit}>
+              Edit
+            </Button>
+            <Button {...restoreFocusTarget} icon={<DeleteRegular />} disabledFocusable={!actionsReady} onClick={onDelete}>
+              Delete…
+            </Button>
           </DrawerFooter>
         </>
       )}
     </OverlayDrawer>
+  );
+}
+
+function ProductUsage({ usage, onRetry }: { usage: ProductDetailState; onRetry: () => void }) {
+  const styles = useStyles();
+  if (usage.status === "idle" || (usage.status === "loading" && !usage.detail)) {
+    return <Spinner size="tiny" labelPosition="after" label="Checking where it is used…" />;
+  }
+  if (usage.status === "error" && !usage.detail) {
+    return (
+      <MessageBar intent="error" layout="multiline">
+        <MessageBarBody>{usage.message}</MessageBarBody>
+        <MessageBarActions>
+          <Button onClick={onRetry}>Retry</Button>
+        </MessageBarActions>
+      </MessageBar>
+    );
+  }
+  const detail = usage.detail!;
+  const references = listReferences(detail.references);
+  if (references.length === 0) {
+    return (
+      <Text className={styles.muted}>
+        Nothing yet: no stock, equipment, jobs, reservations or movements. Every field can be edited, and the product
+        can be deleted.
+      </Text>
+    );
+  }
+  return (
+    <>
+      <ul className={styles.usageList}>
+        {references.map((reference) => (
+          <li key={reference.kind}>
+            {reference.count.toLocaleString("en")} {reference.label}
+          </li>
+        ))}
+      </ul>
+      <Text size={200} className={styles.muted}>
+        The SKU, unit and serial tracking are locked while records refer to the product, and it can&apos;t be deleted.
+      </Text>
+    </>
   );
 }

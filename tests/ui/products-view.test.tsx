@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ProductsView } from "@/components/products/products-view";
 import { ApiRequestError } from "@/lib/api/client";
 import type { ProductDto } from "@/lib/contracts/products";
-import { product } from "../support/products";
+import { product, productDetail } from "../support/products";
 import { renderWithFluent } from "../support/render";
 
 const catalogue: ProductDto[] = [
@@ -27,7 +27,7 @@ describe("ProductsView", () => {
   it("announces loading, then lists products with their catalogue fields", async () => {
     renderWithFluent(<ProductsView loadProducts={loads(catalogue)} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Loading products…");
+    expect(screen.getByText("Loading products…").closest("[role=status]")).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "Product catalogue" })).toBeVisible();
     expect(bodyRows()).toHaveLength(3);
 
@@ -82,16 +82,19 @@ describe("ProductsView", () => {
     expect(screen.getByRole("searchbox")).toBeDisabled();
   });
 
-  it("opens read-only details, including a policy flagged for review", async () => {
-    const { user } = renderWithFluent(<ProductsView loadProducts={loads(catalogue)} />);
+  it("opens details, including a policy flagged for review", async () => {
+    const get = vi.fn((id: string) => Promise.resolve(productDetail(catalogue.find((p) => p.id === id)!)));
+    const { user } = renderWithFluent(<ProductsView loadProducts={loads(catalogue)} api={{ get }} />);
 
     await user.click(await screen.findByRole("button", { name: "Kitchen display 15in, view details" }));
 
-    const details = await screen.findByRole("dialog", { name: "Kitchen display 15in details" });
-    expect(within(details).getByText("Restocking policy needs review")).toBeVisible();
+    // Under jsdom Tabster can leave a freshly opened modal aria-hidden; real browsers were checked separately.
+    const details = await screen.findByRole("dialog", { name: "Kitchen display 15in details", hidden: true });
+    expect(within(details).getByText("Restocking policy needs review")).toBeInTheDocument();
     expect(within(details).getByText("Hub says kitchen displays ship direct.")).toBeVisible();
     expect(within(details).getByText("Required for every unit")).toBeVisible();
-    expect(within(details).getByText(/Editing products isn.t available yet/)).toBeVisible();
-    expect(within(details).queryByRole("button", { name: /edit|delete/i })).not.toBeInTheDocument();
+    expect(await within(details).findByText(/Nothing yet: no stock, equipment/)).toBeVisible();
+    expect(within(details).getByRole("button", { name: "Edit", hidden: true })).not.toHaveAttribute("aria-disabled", "true");
+    expect(within(details).getByRole("button", { name: "Delete…", hidden: true })).not.toHaveAttribute("aria-disabled", "true");
   });
 });

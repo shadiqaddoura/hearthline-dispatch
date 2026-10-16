@@ -1,6 +1,6 @@
 "use client";
 
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 import { SearchBox, Text, makeStyles, tokens } from "@fluentui/react-components";
 
 const useStyles = makeStyles({
@@ -12,6 +12,7 @@ const useStyles = makeStyles({
     gap: tokens.spacingHorizontalM,
   },
   search: { width: "320px", maxWidth: "100%", "@media (max-width: 479px)": { width: "100%" } },
+  end: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalL, "@media (max-width: 479px)": { width: "100%", justifyContent: "space-between" } },
   count: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -22,9 +23,11 @@ interface ProductToolbarProps {
   /** Products shown and in the catalogue; omitted while the catalogue isn't loaded. */
   counts?: { shown: number; total: number };
   disabled?: boolean;
+  /** Buttons beside the count, e.g. Add product. */
+  actions?: ReactNode;
 }
 
-export function ProductToolbar({ searchRef, query, onQueryChange, counts, disabled }: ProductToolbarProps) {
+export function ProductToolbar({ searchRef, query, onQueryChange, counts, disabled, actions }: ProductToolbarProps) {
   const styles = useStyles();
   return (
     <div className={styles.toolbar} role="search">
@@ -37,12 +40,15 @@ export function ProductToolbar({ searchRef, query, onQueryChange, counts, disabl
         onChange={(_, data) => onQueryChange(data.value)}
         disabled={disabled}
       />
+      <div className={styles.end}>
       <Text size={200} className={styles.count} aria-live="polite">
         {counts &&
           (counts.shown === counts.total
             ? `${counts.total} ${counts.total === 1 ? "product" : "products"}`
             : `${counts.shown} of ${counts.total} products`)}
       </Text>
+      {actions}
+      </div>
     </div>
   );
 }

@@ -92,10 +92,10 @@ function EmptyMessage({ icon, title, children, action }: { icon: ReactNode; titl
   );
 }
 
-export function ProductsEmpty() {
+export function ProductsEmpty({ action }: { action?: ReactNode }) {
   return (
-    <EmptyMessage icon={<TagMultipleRegular />} title="No products yet">
-      The catalogue is filled when the van stock book is imported. Run the import, then reload this page.
+    <EmptyMessage icon={<TagMultipleRegular />} title="No products yet" action={action}>
+      The catalogue is filled when the van stock book is imported, or you can add the first product yourself.
     </EmptyMessage>
   );
 }
