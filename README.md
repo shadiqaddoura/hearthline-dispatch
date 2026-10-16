@@ -109,11 +109,12 @@ Pages are server components that render one client component; Fluent is used onl
 | Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
 | Restock policy display | A flagged policy shows its current setting *and* the flag ("Off · needs review"), plus the note in the details panel. | The kitchen-display decision is provisional (see above). Hiding either half would mislead. |
 | Product data | Only what `GET /api/products` returns. No demo fixtures. An empty database shows "No products yet" with how to import. | Everything shown is a real record. |
-| Focus restoration | Panels return focus to their trigger with Fluent's `useRestoreFocusSource/Target`. The restore API is kept alive at the root. | Next 16 keeps visited routes in a hidden `<Activity>`, which stops their effects but leaves Tabster attributes in the page. Tabster then reports the API as uninitialised. |
+| Focus manager (Tabster) | Each top-level screen renders `components/theme/focus-manager.tsx`, which starts every part of Tabster that Fluent uses (arrow keys, focus groups, modal trapping and restoration, observed elements). It isn't in the root layout. Panels return focus to their trigger with `useRestoreFocusSource/Target`. | Next keeps visited routes in a hidden `<Activity>`. Their effects stop, but their focus attributes stay in the page, so Tabster can restart without the parts those attributes need. Starting Tabster in the root layout instead makes it touch the shell before React hydrates it, which breaks hydration. |
+| Keyborg version | `package.json` `overrides` gives `@fluentui/react-tabster` Keyborg 3.498.0, the version Tabster 8.8.1 already uses. Remove it once a Fluent release depends on Keyborg 3. | Fluent 9.74.9 asks for Keyborg 2 while its Tabster asks for Keyborg 3. The two copies number their instances separately and register them in one shared window registry, so both create a `k1` and disposing one tears down the other ("Keyborg instance k1 is being disposed incorrectly"). Fluent only uses the parts of Keyborg that version 3 keeps unchanged. |
 
 The Next starter's Tailwind packages and Turbopack rule are still installed, but `globals.css` no longer imports Tailwind. Another design direction could use them; otherwise they can be removed.
 
-Known dev-only console noise: in `next dev`, Strict Mode mounts effects twice, and Tabster logs "mover API used before initialization" / "Keyborg instance … disposed incorrectly" on a cold load. Production builds don't log them.
+The only expected development console message is a hydration warning when a browser extension adds attributes to `<html>`. The app adds none: the server sends `<html lang="en">`.
 
 ## API
 
@@ -134,7 +135,7 @@ There is no authentication yet, so write requests name their actor (`assignedBy`
 
 ## Tests
 
-121 tests: 34 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation), 72 integration tests against real Postgres, and 15 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; shell navigation and the demo indicator). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
+123 tests: 34 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation), 72 integration tests against real Postgres, and 17 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
 
 ## Not done yet / known limits
 
