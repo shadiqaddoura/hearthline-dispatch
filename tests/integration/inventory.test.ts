@@ -4,7 +4,7 @@ import { runInTransaction } from "@/server/db/transaction";
 import { moveStock } from "@/server/modules/inventory/stock-ledger";
 import { assignJob } from "@/server/modules/dispatch/dispatch.service";
 import { updateVan } from "@/server/modules/fleet/fleet.service";
-import { correctStock, transferStock } from "@/server/modules/inventory/inventory.service";
+import { correctStock, getVanStock, transferStock } from "@/server/modules/inventory/inventory.service";
 import { getJob } from "@/server/modules/jobs/jobs.service";
 import { listRestockJobs } from "@/server/modules/restocking/restock.service";
 import { correctStockRequest } from "@/lib/contracts/inventory";
@@ -165,6 +165,101 @@ describe("stock corrections", () => {
     });
     expect(correction.previousQuantity).toBe(-2);
     expect(await balance(w.north.locationId, w.cable.id)).toBe(4);
+  });
+});
+
+describe("correcting serialised counts", () => {
+  /** What the import does when the book says -2: a negative balance with no unit rows behind it. */
+  const importNegativePrinters = (quantity: number) =>
+    runInTransaction((tx) =>
+      moveStock(tx, {
+        type: "OPENING_BALANCE",
+        productId: w.printer.id,
+        condition: "WORKING",
+        quantity,
+        from: { locationId: w.north.locationId },
+        allowNegative: true,
+        performedBy: "stock-book import",
+      }),
+    );
+  const count = (countedQuantity: number) =>
+    correctStock({
+      locationId: w.north.locationId,
+      productId: w.printer.id,
+      condition: "WORKING",
+      countedQuantity,
+      reason: "Monday count",
+      correctedBy: "Daniel",
+    });
+  const unitsHere = () =>
+    prisma.equipmentUnit.findMany({
+      where: { productId: w.printer.id, locationId: w.north.locationId, status: "IN_STOCK" },
+      orderBy: [{ serialNumber: "asc" }, { createdAt: "asc" }],
+    });
+  const printerLine = async () => (await getVanStock(w.north.id)).lines.find((l) => l.productId === w.printer.id)!;
+
+  it("corrects -2 to a count of 4 with four unit records, not six", async () => {
+    await importNegativePrinters(2);
+
+    const correction = await count(4);
+
+    expect(correction).toMatchObject({ previousQuantity: -2, correctedQuantity: 4, correctedBy: "Daniel", reason: "Monday count" });
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(4);
+    const units = await unitsHere();
+    expect(units).toHaveLength(4);
+    expect(units.every((u) => u.serialNumber === null && u.verification === "NEEDS_VERIFICATION")).toBe(true);
+    expect(await prisma.equipmentUnit.count({ where: { productId: w.printer.id } })).toBe(4);
+    // Unverified units stay visible but cannot be assigned.
+    expect(await printerLine()).toMatchObject({ working: 4, needsVerification: 4, available: 0 });
+    // History still adds up: the movement is the balance change.
+    expect(await prisma.stockMovement.findFirst({ where: { correctionId: correction.id } })).toMatchObject({
+      type: "CORRECTION",
+      quantity: 6,
+      toLocationId: w.north.locationId,
+    });
+  });
+
+  it("corrects -2 to zero without creating any units", async () => {
+    await importNegativePrinters(2);
+
+    const correction = await count(0);
+
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(0);
+    expect(await prisma.equipmentUnit.count({ where: { productId: w.printer.id } })).toBe(0);
+    expect(await prisma.stockMovement.findFirst({ where: { correctionId: correction.id } })).toMatchObject({ quantity: 2 });
+  });
+
+  it("keeps existing units and serials when the count goes up or down", async () => {
+    await stockVan(w.north.locationId, w.printer.id, 2, { serials: ["P-1", "P-2"] });
+    await stockVan(w.north.locationId, w.printer.id, 1); // counted, no serial yet
+    const before = await unitsHere();
+
+    await count(5);
+    const raised = await unitsHere();
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(5);
+    expect(raised).toHaveLength(5);
+    for (const unit of before) expect(raised).toContainEqual(unit);
+
+    await count(2);
+    const lowered = await unitsHere();
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
+    expect(lowered.map((u) => [u.serialNumber, u.verification, u.condition])).toEqual([
+      ["P-1", "VERIFIED", "WORKING"],
+      ["P-2", "VERIFIED", "WORKING"],
+    ]);
+    expect(lowered.map((u) => u.id)).toEqual(before.filter((u) => u.serialNumber).map((u) => u.id));
+  });
+
+  it("refuses a count below the units with recorded serials, and changes nothing", async () => {
+    await stockVan(w.north.locationId, w.printer.id, 2, { serials: ["P-1", "P-2"] });
+    const before = await unitsHere();
+
+    await expect(count(1)).rejects.toMatchObject({ code: "CONFLICT", details: { serials: ["P-1", "P-2"] } });
+
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
+    expect(await unitsHere()).toEqual(before);
+    expect(await prisma.stockCorrection.count()).toBe(0);
+    expect(await prisma.stockMovement.count({ where: { type: "CORRECTION" } })).toBe(0);
   });
 });
 

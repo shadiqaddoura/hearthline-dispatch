@@ -16,7 +16,7 @@ import type {
 import type { StockMovement } from "@/generated/prisma/client";
 import { assignableQuantity } from "./availability";
 import { buildStockLines, getBalance, loadStockFigures } from "./inventory.repository";
-import { moveStock } from "./stock-ledger";
+import { applyCount, moveStock } from "./stock-ledger";
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
@@ -117,23 +117,17 @@ export async function correctStock(input: CorrectStockRequest): Promise<StockCor
       },
     });
 
-    const delta = input.countedQuantity - previous;
-    if (delta !== 0) {
-      const here = { locationId: input.locationId };
-      await moveStock(tx, {
-        type: "CORRECTION",
-        productId: input.productId,
-        condition: input.condition,
-        quantity: Math.abs(delta),
-        ...(delta > 0 ? { to: here } : { from: here }),
-        // A lower count removes unidentified units before ones with a recorded serial.
-        unitPreference: "UNVERIFIED_FIRST",
-        performedBy: input.correctedBy,
-        note: input.reason,
-        correctionId: record.id,
-      });
-      await recalculateRestockForLocations(tx, [input.locationId]);
-    }
+    // The count is the resulting quantity: balance, unit rows and movement are set from it.
+    await applyCount(tx, {
+      locationId: input.locationId,
+      productId: input.productId,
+      condition: input.condition,
+      countedQuantity: input.countedQuantity,
+      performedBy: input.correctedBy,
+      note: input.reason,
+      correctionId: record.id,
+    });
+    if (input.countedQuantity !== previous) await recalculateRestockForLocations(tx, [input.locationId]);
     return record;
   });
 

@@ -81,6 +81,103 @@ export async function moveStock(tx: Tx, input: MovementInput) {
   });
 }
 
+export interface CountInput {
+  locationId: string;
+  productId: string;
+  condition: StockCondition;
+  countedQuantity: number;
+  performedBy: string;
+  note: string;
+  correctionId: string;
+}
+
+/**
+ * Applies a physical count at a van. The count is the resulting quantity, not a
+ * movement of particular units, so:
+ *   1. serialised unit rows are reconciled to the counted number (not to the
+ *      difference: an imported negative balance has no unit rows behind it),
+ *   2. the balance becomes the counted number,
+ *   3. one CORRECTION movement records the difference.
+ * Units with a recorded serial are never written off here; a count below them is refused.
+ */
+export async function applyCount(tx: Tx, input: CountInput) {
+  if (input.countedQuantity < 0) throw new AppError("VALIDATION_FAILED", "A counted quantity cannot be negative");
+  const product = await tx.product.findUniqueOrThrow({ where: { id: input.productId } });
+  if (!(await trackedLocationId(tx, input))) throw new AppError("VALIDATION_FAILED", "Only van stock can be counted");
+
+  const key = { locationId: input.locationId, productId: input.productId, condition: input.condition };
+  const previous = (await tx.stockBalance.findUnique({ where: { locationId_productId_condition: key } }))?.quantity ?? 0;
+
+  if (product.serialised) await reconcileUnitsToCount(tx, product.sku, input);
+
+  await tx.stockBalance.upsert({
+    where: { locationId_productId_condition: key },
+    create: { ...key, quantity: input.countedQuantity },
+    update: { quantity: input.countedQuantity },
+  });
+
+  const delta = input.countedQuantity - previous;
+  if (delta === 0) return null;
+  const here = input.locationId;
+  return tx.stockMovement.create({
+    data: {
+      type: "CORRECTION",
+      productId: input.productId,
+      condition: input.condition,
+      quantity: Math.abs(delta),
+      fromLocationId: delta < 0 ? here : null,
+      toLocationId: delta > 0 ? here : null,
+      correctionId: input.correctionId,
+      serials: [],
+      performedBy: input.performedBy,
+      note: input.note,
+    },
+  });
+}
+
+/**
+ * Makes the IN_STOCK unit rows here number exactly the count. Missing units are added
+ * as needing verification; surplus units without a serial are written off. Rows with a
+ * serial keep their identity, condition and verification: if the count is below them,
+ * nobody can say which device is missing, so the correction is refused for review.
+ */
+async function reconcileUnitsToCount(tx: Tx, sku: string, input: CountInput) {
+  const units = await tx.equipmentUnit.findMany({
+    where: { locationId: input.locationId, productId: input.productId, condition: input.condition, status: "IN_STOCK" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, serialNumber: true, verification: true },
+  });
+  const identified = units.filter((u) => u.serialNumber !== null);
+  const unidentified = units.filter((u) => u.serialNumber === null);
+
+  if (input.countedQuantity < identified.length) {
+    throw new AppError(
+      "CONFLICT",
+      `Counted ${input.countedQuantity} ${sku} but ${identified.length} here have recorded serials; ` +
+        "transfer or write off the specific serials first, then correct the count",
+      { countedQuantity: input.countedQuantity, serials: identified.map((u) => u.serialNumber) },
+    );
+  }
+
+  const surplus = units.length - input.countedQuantity;
+  if (surplus > 0) {
+    await tx.equipmentUnit.updateMany({
+      where: { id: { in: unidentified.slice(0, surplus).map((u) => u.id) } },
+      data: { status: "WRITTEN_OFF", locationId: null },
+    });
+  } else if (surplus < 0) {
+    await tx.equipmentUnit.createMany({
+      data: Array.from({ length: -surplus }, () => ({
+        productId: input.productId,
+        verification: "NEEDS_VERIFICATION" as const,
+        condition: input.condition,
+        status: "IN_STOCK" as const,
+        locationId: input.locationId,
+      })),
+    });
+  }
+}
+
 async function changeBalance(tx: Tx, locationId: string, productId: string, condition: StockCondition, delta: number) {
   const row = await tx.stockBalance.upsert({
     where: { locationId_productId_condition: { locationId, productId, condition } },
