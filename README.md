@@ -1,6 +1,6 @@
 # Hearthline Dispatch
 
-The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (branch `feat/fluent2-ui`, Microsoft Fluent 2) has a sign-in preview, the application shell, a read-only Dispatch board and a read-only Products page. See [UI](#ui-fluent-2).
+The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (branch `feat/fluent2-ui`, Microsoft Fluent 2) has a sign-in preview, the application shell, a Dispatch board with manual assignment and scheduling, and a read-only Products page. See [UI](#ui-fluent-2).
 
 ## Run it
 
@@ -93,6 +93,8 @@ app/(app)/products/page.tsx    Products
 components/theme/              the one theme (teal brand ramp → createLightTheme) and the Fluent/Next providers
 components/shell/              sidebar, header, navigation config, media-query hook
 components/sign-in/            screen + form
+components/dispatch/assignment/  assign and schedule dialogs, van choice, schedule fields, their state (use-assignment), and
+                               the board wiring (use-job-actions)
 components/dispatch/           board (layout and selection), request list and details, van list and card, stock summary,
                                eligibility explanation, loading/error states, data hooks
 components/products/           view (state), toolbar, table, details panel, loading/empty/error states, useProducts
@@ -100,6 +102,7 @@ lib/api/                       browser fetch of our own API, unwrapping { data }
 lib/auth/sign-in.ts            form rules and the preview sign-in handler
 lib/products/catalogue.ts      search and wording rules (pure, unit-tested)
 lib/dispatch/presentation.ts   labels, dates and waiting-time states (pure, unit-tested)
+lib/dispatch/scheduling.ts     schedule form parsing and what a failed save means (pure, unit-tested)
 lib/contracts/products.ts      ProductDto, shared by GET /api/products and the UI
 ```
 
@@ -113,7 +116,11 @@ Pages are server components that render one client component; Fluent is used onl
 | Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
 | Restock policy display | A flagged policy shows its current setting *and* the flag ("Off · needs review"), plus the note in the details panel. | The kitchen-display decision is provisional (see above). Hiding either half would mislead. |
 | Product data | Only what `GET /api/products` returns. No demo fixtures. An empty database shows "No products yet" with how to import. | Everything shown is a real record. |
-| Dispatch board scope | Read-only. It shows requests waiting for a van, customer work already on a van (assigned or in progress), and every van that isn't sold. There are no assignment or scheduling controls, not even disabled ones. | Assignment and scheduling are the next task. |
+| Dispatch board scope | Requests waiting for a van, customer work already on a van (assigned or in progress), and every van that isn't sold. A waiting request can be assigned; an assigned job can have its day and position changed. Reassignment, cancellation and completion aren't on the board yet. | |
+| Assigning from the board | "Assign to a van…" rechecks eligibility, then offers only vans the backend says can take the job (the rest are listed with reasons). It shows the technician and the job's equipment on the chosen van, asks for a confirmation, and calls `POST /api/jobs/{id}/assign`. That endpoint rechecks under the van's lock and reserves stock; the first schedule is saved in the same transaction. Success is shown only from the server's answer. | The board's eligibility can be minutes old, so the server stays the authority. A single transaction means there's no "assigned but not scheduled" half-state to recover from. |
+| When a save fails | A stock, driver or vehicle change returns the dialog to the van list with the reason, and refreshes the board and eligibility. A refused schedule shows the server's message on the field. If the server doesn't answer, the UI re-reads the job: assigned to the chosen van means it was saved; still waiting means it wasn't, and you can retry. | The outcome is never guessed. Repeated submits are blocked while a request is in flight, and the server rejects assigning a job twice, so a retry can't create a second assignment or reservation. |
+| Who assigned it | The dialog asks for your name, which the API records as `assignedBy`. It's remembered for the next assignment on that page. | There's no sign-in, and the API requires a named actor. |
+| Scheduling rules (server) | A schedule is a calendar day plus an optional position in the van's day. New days can't be in the past (London today); keeping an existing past day, e.g. an imported visit, is allowed. A position needs a day and a van, and can't be one another job (not cancelled) already holds on that van that day. These are checked under the van's location lock, in the documented job → van order, so two saves can't take the same position. Changing a schedule never touches stock, reservations or the request date. | No time slots, durations, route optimisation or holiday rules exist, so none are invented. |
 | Eligibility on the board | Selecting a waiting request calls `GET /api/jobs/{id}/eligible-vans`. Vans are shown in the backend's ranking (eligible, then the job's zone), and each van lists the backend's reasons and shortage figures. The UI doesn't compute eligibility or shortages itself. Assigned work shows its van and schedule instead. | One source of truth for the rules. For assigned work, the job's own reservation would make its van look short, so that check belongs with reassignment. |
 | Waiting time | Shown from the API's `requestedOn` and `waitingDays`, as calendar days up to the board date. It is never taken from the scheduled date. A missing or unreadable request date, or one after the board date (two imported requests), is labelled as such instead of showing a number. | Waiting means how long the customer has waited since asking, whatever has been scheduled since. There are no working-day or holiday rules in the system, so the board shows no service-deadline or overdue indicator; the next-working-day promise isn't measured yet (see below). |
 | Board stock | Per van: Working (physical), Reserved, Available, with broken units, units waiting for a serial and counts below zero noted beside the product. | Figures come from the API, where "available" already excludes broken, unverified and reserved stock. |
@@ -132,7 +139,7 @@ The only expected development console message is a hydration warning when a brow
 | `GET /api/dispatch/board?date=` | Requests waiting for a van, assigned and in-progress work (`assignedWork`), each with days waited; each van's stock, driver, open assigned jobs in run order (`assignedJobs`) and jobs that day |
 | `GET/POST /api/jobs`, `GET /api/jobs/{id}` | List (`?status`, `?open=true`), create, read |
 | `GET /api/jobs/{id}/eligible-vans` | Vans ranked: eligible → same zone, with reasons |
-| `POST /api/jobs/{id}/assign` · `reassign` · `start` · `cancel` · `complete`; `PATCH …/schedule` | Lifecycle |
+| `POST /api/jobs/{id}/assign` · `reassign` · `start` · `cancel` · `complete`; `PATCH …/schedule` | Lifecycle. `assign` takes an optional first `scheduledFor` and `sequence`; both validate the schedule (409 `CONFLICT` for a taken position, 400 for a past day or a position without a day or van, with `details.fieldErrors`) |
 | `GET /api/vans`, `GET/PATCH /api/vans/{id}`, `GET /api/vans/{id}/stock` | Fleet, driver/status changes, stock with availability |
 | `POST /api/stock/transfers` · `corrections`, `GET /api/stock/movements` | Inventory |
 | `POST /api/units/verify` | Record a counted unit's serial |
@@ -144,11 +151,11 @@ There is no authentication yet, so write requests name their actor (`assignedBy`
 
 ## Tests
 
-144 tests: 43 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation, dispatch waiting time and dates), 73 integration tests against real Postgres, and 28 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; dispatch request selection, eligibility explanations, no eligible van, missing dates, stale eligibility answers, loading, empty and error states; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
+175 tests: 50 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation, dispatch waiting time, dates and schedule input), 86 integration tests against real Postgres (including assignment with a schedule, rescheduling without touching stock or the request date, taken positions, past days, repeated and simultaneous saves), and 39 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; dispatch request selection, eligibility explanations, no eligible van, missing dates, stale eligibility answers, loading, empty and error states; assignment and scheduling dialogs, including stale eligibility, server refusals, unanswered requests and repeated clicks; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). To keep a database untouched, point `TEST_DATABASE_URL` at a new empty database (the suite applies migrations and clears it). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
 
 ## Not done yet / known limits
 
-- Screens: sign-in (preview), Dispatch board (read-only) and Products. Still to build: assignment and scheduling on the board, fleet, inventory, restock list, imports, technician phone view.
+- Screens: sign-in (preview), Dispatch board (assignment and scheduling) and Products. Still to build: reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
 - No authentication or roles. The sign-in screen is a preview, and every page and API route is open.
 - Products are read-only: no editing or deletion.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
