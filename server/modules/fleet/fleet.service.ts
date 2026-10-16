@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/server/db/prisma";
-import { lockLocations, runInTransaction } from "@/server/db/transaction";
-import { invalidState, notFound } from "@/server/http/errors";
+import { lockJob, lockLocations, lockTechnician, runInTransaction, type Tx } from "@/server/db/transaction";
+import { AppError, invalidState, notFound } from "@/server/http/errors";
 import { recalculateRestockForLocations } from "@/server/modules/restocking/restock.service";
 import { refreshBlockingReasons } from "@/server/modules/dispatch/dispatch.service";
 import { fromIsoDate, todayIsoDate } from "@/lib/dates";
@@ -30,63 +30,112 @@ export async function listTechnicians(): Promise<TechnicianDto[]> {
  * - Stock stays with the van whatever happens here: it belongs to the vehicle's location.
  *   Moving it to another van is an explicit stock transfer.
  * - A van with assigned or in-progress jobs cannot leave service or lose its driver;
- *   those jobs must be reassigned first.
- * - A new driver takes over the van's assigned jobs (the reserved stock is on this van).
+ *   those jobs must be reassigned first. This includes the van a technician is moved off.
+ * - A new driver takes over the van's ASSIGNED jobs (the reserved stock is on this van).
+ *   IN_PROGRESS jobs keep the technician who started them: that person is on site.
+ *
+ * Concurrency: the van and the technician's current van are both locked, so an
+ * assignment to either van (which reads the driver under the same location lock)
+ * runs entirely before or after this change. Locks follow the shared order: the
+ * jobs handed over, then both locations, then the technician. Everything is re-read
+ * under the locks; if the locked set no longer covers what must change (a job was
+ * assigned or the technician moved in between), the transaction rolls back and is
+ * retried, and after a few attempts a CONFLICT error is returned.
  */
 export async function updateVan(vanId: string, input: UpdateVanRequest): Promise<VanDto> {
-  await runInTransaction(async (tx) => {
-    const van = await findVan(tx, vanId);
-    if (!van) throw notFound("Van", vanId);
-    // Same lock as assignment, so a job cannot be assigned while the van is leaving service.
-    await lockLocations(tx, [van.locationId]);
-    const activeJobs = await countActiveJobsOnVan(tx, vanId);
-
-    const leavingService = input.status !== undefined && input.status !== "ACTIVE" && van.status === "ACTIVE";
-    if (leavingService && activeJobs > 0) {
-      throw invalidState(`${van.code} has ${activeJobs} assigned job(s); reassign them before it leaves service`);
-    }
-
-    if (input.technicianId !== undefined && input.technicianId !== van.currentTechnicianId) {
-      if (input.technicianId === null) {
-        if (activeJobs > 0) throw invalidState(`${van.code} has ${activeJobs} assigned job(s) that need a technician`);
-      } else {
-        const technician = await tx.technician.findUnique({ where: { id: input.technicianId }, include: { van: true } });
-        if (!technician) throw notFound("Technician", input.technicianId);
-        if (!technician.active) throw invalidState(`${technician.name} is not an active technician`);
-        if (technician.van) {
-          // A technician drives one van at a time; leaving the other van must not strand its jobs.
-          const otherJobs = await countActiveJobsOnVan(tx, technician.van.id);
-          if (otherJobs > 0) {
-            throw invalidState(`${technician.name} is driving ${technician.van.code}, which has ${otherJobs} assigned job(s)`);
-          }
-          await tx.van.update({ where: { id: technician.van.id }, data: { currentTechnicianId: null } });
-        }
-      }
-      await tx.van.update({ where: { id: vanId }, data: { currentTechnicianId: input.technicianId } });
-      if (input.technicianId) {
-        await tx.job.updateMany({
-          where: { vanId, status: "ASSIGNED" },
-          data: { technicianId: input.technicianId },
-        });
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await runInTransaction((tx) => applyVanUpdate(tx, vanId, input));
+      break;
+    } catch (error) {
+      if (!(error instanceof LockSetChanged)) throw error;
+      if (attempt === MAX_ATTEMPTS) {
+        throw new AppError("CONFLICT", "The van or technician changed while this update was being saved; try again");
       }
     }
-
-    if (input.status !== undefined || input.statusNote !== undefined) {
-      const statusChanged = input.status !== undefined && input.status !== van.status;
-      await tx.van.update({
-        where: { id: vanId },
-        data: {
-          status: input.status,
-          statusNote: input.statusNote,
-          statusSince: statusChanged ? fromIsoDate(todayIsoDate()) : undefined,
-        },
-      });
-    }
-
-    // A van that leaves service drops its open restock job; one returning gets a fresh one.
-    await recalculateRestockForLocations(tx, [van.locationId]);
-  });
+  }
 
   await refreshBlockingReasons();
   return getVan(vanId);
+}
+
+const MAX_ATTEMPTS = 3;
+
+/** Thrown inside the transaction when the rows it locked no longer cover the change. */
+class LockSetChanged extends Error {}
+
+async function applyVanUpdate(tx: Tx, vanId: string, input: UpdateVanRequest) {
+  // 1. Plan the locks from an unlocked read.
+  const planned = await findVan(tx, vanId);
+  if (!planned) throw notFound("Van", vanId);
+  const newDriverId = input.technicianId ?? null;
+  const changingDriver = input.technicianId !== undefined && input.technicianId !== planned.currentTechnicianId;
+  const plannedTechnician = changingDriver && newDriverId ? await findTechnician(tx, newDriverId) : null;
+  const plannedHandover = changingDriver && newDriverId ? await assignedJobIds(tx, vanId) : [];
+
+  // 2. Lock in the shared order: jobs, then locations, then the technician.
+  for (const jobId of plannedHandover) await lockJob(tx, jobId);
+  await lockLocations(tx, [planned.locationId, ...(plannedTechnician?.van ? [plannedTechnician.van.locationId] : [])]);
+  if (plannedTechnician) await lockTechnician(tx, plannedTechnician.id);
+
+  // 3. Re-read under the locks. Anything that changed since step 1 means the locks are wrong.
+  const van = (await findVan(tx, vanId))!;
+  const technician = changingDriver && newDriverId ? await findTechnician(tx, newDriverId) : null;
+  const driverStillChanging = input.technicianId !== undefined && input.technicianId !== van.currentTechnicianId;
+  if (driverStillChanging !== changingDriver || technician?.van?.id !== plannedTechnician?.van?.id) throw new LockSetChanged();
+  const handover = driverStillChanging && newDriverId ? await assignedJobIds(tx, vanId) : [];
+  if (handover.join() !== plannedHandover.join()) throw new LockSetChanged();
+
+  // 4. Checks and writes, all against the locked state.
+  const activeJobs = await countActiveJobsOnVan(tx, vanId);
+  const leavingService = input.status !== undefined && input.status !== "ACTIVE" && van.status === "ACTIVE";
+  if (leavingService && activeJobs > 0) {
+    throw invalidState(`${van.code} has ${activeJobs} assigned job(s); reassign them before it leaves service`);
+  }
+
+  if (driverStillChanging) {
+    if (newDriverId === null) {
+      if (activeJobs > 0) throw invalidState(`${van.code} has ${activeJobs} assigned job(s) that need a technician`);
+    } else {
+      if (!technician) throw notFound("Technician", newDriverId);
+      if (!technician.active) throw invalidState(`${technician.name} is not an active technician`);
+      if (technician.van) {
+        // A technician drives one van at a time; leaving the other van must not strand its jobs.
+        const otherJobs = await countActiveJobsOnVan(tx, technician.van.id);
+        if (otherJobs > 0) {
+          throw invalidState(`${technician.name} is driving ${technician.van.code}, which has ${otherJobs} assigned job(s)`);
+        }
+        await tx.van.update({ where: { id: technician.van.id }, data: { currentTechnicianId: null } });
+      }
+    }
+    await tx.van.update({ where: { id: vanId }, data: { currentTechnicianId: newDriverId } });
+    if (newDriverId && handover.length > 0) {
+      await tx.job.updateMany({ where: { id: { in: handover } }, data: { technicianId: newDriverId } });
+    }
+  }
+
+  if (input.status !== undefined || input.statusNote !== undefined) {
+    const statusChanged = input.status !== undefined && input.status !== van.status;
+    await tx.van.update({
+      where: { id: vanId },
+      data: {
+        status: input.status,
+        statusNote: input.statusNote,
+        statusSince: statusChanged ? fromIsoDate(todayIsoDate()) : undefined,
+      },
+    });
+  }
+
+  // A van that leaves service drops its open restock job; one returning gets a fresh one.
+  await recalculateRestockForLocations(tx, [van.locationId]);
+}
+
+function findTechnician(tx: Tx, technicianId: string) {
+  return tx.technician.findUnique({ where: { id: technicianId }, include: { van: true } });
+}
+
+/** The van's ASSIGNED jobs, sorted by id (the order their rows are locked in). */
+async function assignedJobIds(tx: Tx, vanId: string) {
+  const jobs = await tx.job.findMany({ where: { vanId, status: "ASSIGNED" }, select: { id: true }, orderBy: { id: "asc" } });
+  return jobs.map((job) => job.id);
 }

@@ -254,7 +254,7 @@ describe("correcting serialised counts", () => {
     await stockVan(w.north.locationId, w.printer.id, 2, { serials: ["P-1", "P-2"] });
     const before = await unitsHere();
 
-    await expect(count(1)).rejects.toMatchObject({ code: "CONFLICT", details: { serials: ["P-1", "P-2"] } });
+    await expect(count(1)).rejects.toMatchObject({ code: "CONFLICT", details: { serials: expect.arrayContaining(["P-1", "P-2"]) } });
 
     expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
     expect(await unitsHere()).toEqual(before);

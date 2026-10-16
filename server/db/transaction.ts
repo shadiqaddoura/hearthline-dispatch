@@ -16,9 +16,10 @@ export function runInTransaction<T>(work: (tx: Tx) => Promise<T>, options: { tim
 //
 // Every operation that can change availability takes row locks in one fixed order:
 //
-//   1. the job row (if the operation is about a job)
+//   1. the job row(s) (if the operation is about jobs; several are taken sorted by id)
 //   2. the location rows it touches, sorted by id
-//   3. the open restock job of a van (only while its location is already locked)
+//   3. the technician row (driver changes only)
+//   4. the open restock job of a van (only while its location is already locked)
 //
 // Locking the location row serialises all stock and reservation changes for that
 // van: "check availability, then reserve" cannot interleave with another assignment,
@@ -33,6 +34,11 @@ export async function lockLocations(tx: Tx, locationIds: string[]) {
   const ids = [...new Set(locationIds)].sort();
   if (ids.length === 0) return;
   await tx.$queryRaw`SELECT id FROM locations WHERE id = ANY(${ids}::text[]) ORDER BY id FOR UPDATE`;
+}
+
+/** Serialises driver changes for one technician (a technician drives one van at a time). */
+export async function lockTechnician(tx: Tx, technicianId: string) {
+  await tx.$queryRaw`SELECT id FROM technicians WHERE id = ${technicianId} FOR UPDATE`;
 }
 
 export async function lockRestockJob(tx: Tx, restockJobId: string) {
