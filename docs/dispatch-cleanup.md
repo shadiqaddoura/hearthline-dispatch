@@ -1,0 +1,51 @@
+# Dispatch simplification
+
+Branch: `codex/dispatch-workspace-cleanup`, starting at main `1904792`.
+
+## Decisions
+
+The current Fluent 2 interface already had the right business operations. The problem was presentation: a repeated request status, the same blocker described several times, and stock and job details occupying the comparison area. A fresh desktop and mobile browser inspection confirmed this before implementation.
+
+- The queue keeps the server's oldest-first order. Customer and branch identify the request; a consistent waiting-age position makes the oldest requests easier to scan. One blocker badge remains. Assignment status is only repeated where it distinguishes assigned from in-progress work.
+- The selected request keeps its identity, waiting age and exact required quantities visible. The live eligibility summary gives the next step. Original request date, date caveats, imported status, full recorded blocker and notes remain in **Recorded details & notes**.
+- Vans use compact comparison rows: code, technician, usual zone, today's workload, eligibility and one short reason. **Inventory & reasons** reveals all backend reasons, stock, plate/status notes and job lists. Working, reserved and available quantities remain separate, with broken, unverified and imported-negative warnings.
+- Inactive vehicles are in a separate **Off-road / unavailable** section. Server ranking is preserved within each group. Eligibility still comes entirely from the backend; a different zone never disqualifies a van.
+- A blocked assignment shows one summary and collapsed per-van reasons. Schedule and operator fields appear after selecting an eligible van. Final confirmation, stale-state handling and server revalidation are unchanged.
+- Mobile keeps Details and Van choices inside one request workspace. The drawer header retains request context; its footer retains the one assignment/scheduling action. Switching tabs no longer requires leaving the request to visit the fleet overview.
+
+No server, inventory, reservation, authentication, Products, Restocking or Imports implementation changed. The focus-manager provider is unchanged.
+
+## Verification
+
+| Check | Result |
+| --- | --- |
+| TypeScript | Passed (`npm run typecheck`) |
+| Lint | Passed (`npm run lint`) |
+| Production build | Passed with the disposable database URL configured |
+| UI component tests | 51 passed across 7 files |
+| Unit and integration tests | 147 passed across 18 files, in a new disposable database |
+| Desktop browser | 1440 × 1000; request selection, compact comparison, expansion and keyboard interaction |
+| Mobile browser | 390 × 844; Details/Van choices, persistent context/action, blocked dialog, Escape and focus restoration |
+| Successful browser assignment | Invented `QA-DISPATCH-ASSIGN` request, 1 cable, assigned to V05 with explicit confirmation |
+| Successful browser schedule update | Changed from 2099-10-18 / #1 to 2099-10-20 / #2; persisted request date remained 2026-10-02 and the active reservation was identical |
+
+The browser preview used only `dispatch_cleanup_test`, created for this task and loaded from the assessment workbook. The server suite used a separate new database, `dispatch_cleanup_checks`. Existing development data was not used for mutations or destructive tests. After screenshots may include the additional invented QA request; it is not application demo data.
+
+The component tests still cover stale eligibility responses, server refusals, duplicate clicks and unanswered-save reconciliation. Added checks cover the compact blocked dialog, conditional assignment fields, mobile workspace switching and imported-negative inventory warnings. jsdom has no layout engine, so the mobile test explicitly focuses a drawer control to activate Fluent's modal focus manager; real-browser behavior was checked separately.
+
+The first build was prevented from opening a worker port by the execution sandbox. An elevated retry retained the error; clearing this worktree's Turbopack build cache allowed the build to proceed. A subsequent build with the required database configuration passed. No application workaround or dependency/configuration change was introduced. CodeRabbit review was unavailable because its CLI was signed out; local source review, automated checks and browser checks were performed.
+
+## Evidence
+
+| View | Before | After |
+| --- | --- | --- |
+| Desktop, selected imported request | [Before](../output/playwright/before-desktop.png) | [After](../output/playwright/after-desktop.png) |
+| Mobile details | [Before](../output/playwright/before-mobile.png) | [After](../output/playwright/after-mobile-details.png) |
+| Mobile van choices | — | [Van choices](../output/playwright/after-mobile-vans.png) |
+| Mobile expanded inventory | — | [Inventory and reasons](../output/playwright/after-mobile-inventory.png) |
+| No eligible van | — | [Compact blocked dialog](../output/playwright/after-mobile-blocked.png) |
+| Assignment confirmation | — | [Confirmation](../output/playwright/assignment-confirmation.png) |
+| Saved assignment | — | [Saved](../output/playwright/assignment-saved.png) |
+| Saved schedule | — | [Saved](../output/playwright/schedule-saved.png) |
+
+This chat records the implementation decisions and checks. No AI session export has been created. Changes remain local; nothing was merged or pushed.

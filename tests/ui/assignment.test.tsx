@@ -27,7 +27,9 @@ const savedAssignment: JobDto = {
   technician: { id: "tech-van-north", name: "Driver of T-N" },
   scheduledFor: "2099-10-18",
   sequence: 1,
-  activeReservations: [{ id: "res-1", locationId: "loc-van-north", productId: "prd-printer", quantity: 1, status: "ACTIVE" }],
+  activeReservations: [
+    { id: "res-1", locationId: "loc-van-north", productId: "prd-printer", quantity: 1, status: "ACTIVE" },
+  ],
 };
 
 let loadBoard: ReturnType<typeof vi.fn<(signal: AbortSignal) => Promise<DispatchBoardDto>>>;
@@ -62,7 +64,10 @@ async function openAssignDialog() {
   return view;
 }
 
-async function chooseAndReview(user: Awaited<ReturnType<typeof openAssignDialog>>["user"], schedule = { day: "2099-10-18", position: "1" }) {
+async function chooseAndReview(
+  user: Awaited<ReturnType<typeof openAssignDialog>>["user"],
+  schedule = { day: "2099-10-18", position: "1" },
+) {
   const open = await openedDialog();
   await user.click(within(open).getByRole("radio", { name: /T-N/ }));
   fireEvent.change(within(open).getByLabelText("Scheduled day"), { target: { value: schedule.day } });
@@ -110,7 +115,11 @@ describe("assigning a waiting request", () => {
     finish(savedAssignment);
     const notice = await screen.findByText("T-WAIT is assigned.");
     expect(notice.closest("[tabindex='-1']")).toHaveFocus();
-    expect(screen.getByText(/On T-N with Driver of T-N\. Scheduled Sun 18 Oct 2099 · #1 in the van's day\. Reserved: 1 × TEST-PRN\./)).toBeVisible();
+    expect(
+      screen.getByText(
+        /On T-N with Driver of T-N\. Scheduled Sun 18 Oct 2099 · #1 in the van's day\. Reserved: 1 × TEST-PRN\./,
+      ),
+    ).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(loadBoard).toHaveBeenCalledTimes(2)); // the board reloads with the new reservations
   });
@@ -124,7 +133,9 @@ describe("assigning a waiting request", () => {
     await user.click(within(dialog()).getByRole("button", { name: "Confirm assignment" }));
 
     expect(await within(dialog()).findByText("That van can no longer take this job.")).toBeVisible();
-    expect(within(dialog()).getByText(/T-N is short: TEST-PRN 0\/1\. The vans have been rechecked: choose again\./)).toBeVisible();
+    expect(
+      within(dialog()).getByText(/T-N is short: TEST-PRN 0\/1\. The vans have been rechecked: choose again\./),
+    ).toBeVisible();
     expect(within(dialog()).getByRole("heading", { name: "Assign T-WAIT" })).toBeVisible();
     expect(within(dialog()).getByRole("radio", { name: /T-N/ })).not.toBeChecked();
     expect(screen.queryByText(/T-WAIT (is|was) assigned\./)).not.toBeInTheDocument();
@@ -150,7 +161,9 @@ describe("assigning a waiting request", () => {
 
   it("checks the job instead of guessing when the server doesn't answer, and reports it saved if it was", async () => {
     const { user } = await openAssignDialog();
-    assign.mockRejectedValue(new ApiRequestError("Couldn't reach the server. Check your connection and try again.", null));
+    assign.mockRejectedValue(
+      new ApiRequestError("Couldn't reach the server. Check your connection and try again.", null),
+    );
     verify.mockResolvedValue(savedAssignment);
 
     await chooseAndReview(user);
@@ -165,7 +178,9 @@ describe("assigning a waiting request", () => {
   it("says plainly when an unanswered assignment wasn't saved, and lets the dispatcher try again", async () => {
     const { user } = await openAssignDialog();
     assign
-      .mockRejectedValueOnce(new ApiRequestError("Couldn't reach the server. Check your connection and try again.", null))
+      .mockRejectedValueOnce(
+        new ApiRequestError("Couldn't reach the server. Check your connection and try again.", null),
+      )
       .mockResolvedValueOnce(savedAssignment);
     verify.mockResolvedValue(waitingJob);
 
@@ -182,11 +197,12 @@ describe("assigning a waiting request", () => {
 
   it("checks the form before reviewing", async () => {
     const { user } = await openAssignDialog();
+    expect(within(dialog()).queryByLabelText("Scheduled day")).not.toBeInTheDocument();
+    expect(within(dialog()).queryByRole("button", { name: "Review assignment" })).not.toBeInTheDocument();
+    await user.click(within(dialog()).getByRole("radio", { name: /T-N/ }));
     fireEvent.change(within(dialog()).getByLabelText("Position in the van's day"), { target: { value: "1" } });
-
     await user.click(within(dialog()).getByRole("button", { name: "Review assignment" }));
-
-    expect(within(dialog()).getByText("Choose a van that can take this job")).toBeVisible();
+    expect(within(dialog()).getByText("Choose a day first")).toBeVisible();
     expect(within(dialog()).getByText("Enter your name")).toBeVisible();
     expect(assign).not.toHaveBeenCalled();
   });
@@ -214,7 +230,9 @@ describe("changing an assigned job's schedule", () => {
 
     expect(schedule).toHaveBeenCalledWith(assignedJob.id, { scheduledFor: "2099-10-20", sequence: 2 });
     expect(await screen.findByText("T-ASSIGNED's schedule is saved.")).toBeVisible();
-    expect(screen.getByText(/Scheduled Tue 20 Oct 2099 · #2 in the van's day\. Stock and reservations are unchanged\./)).toBeVisible();
+    expect(
+      screen.getByText(/Scheduled Tue 20 Oct 2099 · #2 in the van's day\. Stock and reservations are unchanged\./),
+    ).toBeVisible();
     expect(assign).not.toHaveBeenCalled();
   });
 
@@ -260,4 +278,24 @@ describe("changing an assigned job's schedule", () => {
     expect(await screen.findByText(/It has started, so its schedule can't change\./)).toBeVisible();
     expect(screen.queryByRole("button", { name: /Change schedule|Assign to a van/ })).not.toBeInTheDocument();
   });
+});
+
+it("keeps the no-eligible dialog compact, with reasons available and no assignment form", async () => {
+  loadEligibility.mockResolvedValue(waitingJobEligibility.map((van) => ({ ...van, eligible: false })));
+  const { user } = renderWithFluent(<DispatchBoard loadBoard={loadBoard} loadEligibility={loadEligibility} />);
+  await user.click(await screen.findByText("Harbour Cafe"));
+  await user.click(await screen.findByRole("button", { name: "Assign to a van…" }));
+  const surface = await openedDialog();
+  expect(await within(surface).findByText("No van can take this job right now.")).toBeVisible();
+  const unavailable = within(surface).getByRole("button", { name: /Vans that can't take it/ });
+  expect(unavailable).toHaveAttribute("aria-expanded", "false");
+  expect(within(surface).queryByRole("radio")).not.toBeInTheDocument();
+  expect(within(surface).queryByLabelText("Scheduled day")).not.toBeInTheDocument();
+  expect(within(surface).queryByRole("textbox", { name: /your name/i })).not.toBeInTheDocument();
+  expect(within(surface).queryByRole("button", { name: "Review assignment" })).not.toBeInTheDocument();
+  await user.click(unavailable);
+  expect(within(surface).getByText("Vehicle unavailable:")).toBeVisible();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(assign).not.toHaveBeenCalled();
 });
