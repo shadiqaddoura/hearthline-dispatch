@@ -93,7 +93,7 @@ export function VanChoice({ job, eligibility, vans, value, onChange, error }: Va
       )}
 
       {unavailable.length > 0 && (
-        <Accordion collapsible defaultOpenItems={eligible.length === 0 ? ["unavailable"] : []}>
+        <Accordion collapsible>
           <AccordionItem value="unavailable">
             <AccordionHeader size="small">Vans that can&apos;t take it ({unavailable.length})</AccordionHeader>
             <AccordionPanel>

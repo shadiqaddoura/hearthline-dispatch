@@ -97,7 +97,7 @@ function AssignForm({
   const chosen = ranking.find((v) => v.vanId === form.vanId && v.eligible) ?? null;
   const chosenBoardVan = chosen ? board.vans.find((v) => v.van.id === chosen.vanId) : undefined;
   const stillWaiting = job.status === "REQUESTED";
-  const canReview = stillWaiting && ranking.some((v) => v.eligible);
+  const canReview = stillWaiting && chosen !== null;
   const close = () => {
     if (!form.pending) onClose();
   };
@@ -123,7 +123,13 @@ function AssignForm({
             ref={titleRef}
             tabIndex={-1}
             action={
-              <Button appearance="subtle" aria-label="Close" icon={<DismissRegular />} onClick={close} disabledFocusable={form.pending} />
+              <Button
+                appearance="subtle"
+                aria-label="Close"
+                icon={<DismissRegular />}
+                onClick={close}
+                disabledFocusable={form.pending}
+              />
             }
           >
             {form.step === "choose" ? `Assign ${job.reference}` : `Confirm assigning ${job.reference}`}
@@ -173,23 +179,31 @@ function AssignForm({
                     )}
                   </>
                 )}
-                <ScheduleFields
-                  job={job}
-                  value={form.schedule}
-                  onChange={form.setSchedule}
-                  errors={form.fieldErrors}
-                  today={board.date}
-                  vanJobs={chosenBoardVan ? [...chosenBoardVan.assignedJobs, ...chosenBoardVan.jobsToday] : []}
-                  vanCode={chosen?.code ?? null}
-                />
-                <Field
-                  label="Your name"
-                  required
-                  validationMessage={form.fieldErrors.assignedBy}
-                  hint="Recorded with the assignment. There's no sign-in yet, so the app can't fill this in."
-                >
-                  <Input value={form.assignedBy} onChange={(_, data) => form.setAssignedBy(data.value)} autoComplete="name" />
-                </Field>
+                {chosen && (
+                  <>
+                    <ScheduleFields
+                      job={job}
+                      value={form.schedule}
+                      onChange={form.setSchedule}
+                      errors={form.fieldErrors}
+                      today={board.date}
+                      vanJobs={chosenBoardVan ? [...chosenBoardVan.assignedJobs, ...chosenBoardVan.jobsToday] : []}
+                      vanCode={chosen?.code ?? null}
+                    />
+                    <Field
+                      label="Your name"
+                      required
+                      validationMessage={form.fieldErrors.assignedBy}
+                      hint="Recorded with the assignment. There's no sign-in yet, so the app can't fill this in."
+                    >
+                      <Input
+                        value={form.assignedBy}
+                        onChange={(_, data) => form.setAssignedBy(data.value)}
+                        autoComplete="name"
+                      />
+                    </Field>
+                  </>
+                )}
               </>
             )}
 
@@ -208,8 +222,8 @@ function AssignForm({
             {form.step === "choose" || !stillWaiting ? (
               <>
                 <Button onClick={close}>{stillWaiting ? "Cancel" : "Close"}</Button>
-                {stillWaiting && (
-                  <Button type="submit" appearance="primary" disabled={!canReview}>
+                {canReview && (
+                  <Button type="submit" appearance="primary">
                     Review assignment
                   </Button>
                 )}
