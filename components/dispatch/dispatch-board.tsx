@@ -23,6 +23,7 @@ import { useMediaQuery } from "@/components/shell/use-media-query";
 import type { DispatchBoardDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
 import { JOB_TYPE_LABEL, describeWaitingTime, formatDay, isIsoDay, waitingLabel } from "@/lib/dispatch/presentation";
+import { useRequestActions } from "./use-request-actions";
 import { useJobActions } from "./assignment/use-job-actions";
 import { BoardError, BoardLoading } from "./board-states";
 import { EligibilitySummary } from "./eligibility";
@@ -61,6 +62,9 @@ const useStyles = makeStyles({
   hint: { color: tokens.colorNeutralForeground3 },
   context: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
   footer: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: tokens.spacingHorizontalS,
     borderTop: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
   },
@@ -100,6 +104,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
   );
   const ranking = eligibility.status === "ready" ? eligibility.vans : null;
   const jobActions = useJobActions({ board, job: selectedJob, eligibility, retryEligibility, reloadBoard: reload });
+  const requests = useRequestActions({ job: selectedJob, reload, select: setSelectedId, refreshEligibility: retryEligibility });
   const noticeInDrawer = narrow && detailsOpen && selectedJob !== null;
   const select = (job: JobDto) => {
     setSelectedId(job.id);
@@ -111,7 +116,9 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
 
   return (
     <div className={styles.page}>
+      {requests.notice}
       <div className={styles.toolbar}>
+        {requests.newButton}
         <Text size={200}>
           {boardDay ?? "Dispatch board"}
           {board ? ` · ${board.openRequests.length} waiting · ${board.assignedWork.length} assigned / in progress` : ""}
@@ -245,7 +252,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
                 </div>
               )}
             </DrawerBody>
-            <DrawerFooter className={styles.footer}>{jobActions.actionButton}</DrawerFooter>
+            <DrawerFooter className={styles.footer}>{jobActions.actionButton}{requests.actions}</DrawerFooter>
           </OverlayDrawer>
         </>
       )}
@@ -271,7 +278,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
                   boardDate={board.date}
                   eligibility={eligibility}
                   onRetryEligibility={retryEligibility}
-                  actions={jobActions.actionButton}
+                  actions={<>{jobActions.actionButton}{requests.actions}</>}
                 />
               ) : (
                 <Text className={styles.hint}>Select a request to see its details and which vans can take it.</Text>
@@ -287,6 +294,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
         </div>
       )}
       {jobActions.dialogs}
+      {requests.overlays}
     </div>
   );
 }
