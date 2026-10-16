@@ -1,6 +1,6 @@
 # Hearthline Dispatch
 
-The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (branch `feat/fluent2-ui`, Microsoft Fluent 2) has a sign-in preview, the application shell, a Dispatch board with manual assignment and scheduling, and a read-only Products page. See [UI](#ui-fluent-2).
+The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (branch `feat/fluent2-ui`, Microsoft Fluent 2) has a sign-in preview, the application shell, a Dispatch board with manual assignment and scheduling, a read-only Restocking page, and a read-only Products page. See [UI](#ui-fluent-2).
 
 ## Run it
 
@@ -97,11 +97,13 @@ components/dispatch/assignment/  assign and schedule dialogs, van choice, schedu
                                the board wiring (use-job-actions)
 components/dispatch/           board (layout and selection), request list and details, van list and card, stock summary,
                                eligibility explanation, loading/error states, data hooks
+components/restocking/         view (layout and selection), van list, pick list, broken returns, policy notice, states
 components/products/           view (state), toolbar, table, details panel, loading/empty/error states, useProducts
 lib/api/                       browser fetch of our own API, unwrapping { data } / { error }
 lib/auth/sign-in.ts            form rules and the preview sign-in handler
 lib/products/catalogue.ts      search and wording rules (pure, unit-tested)
 lib/dispatch/presentation.ts   labels, dates and waiting-time states (pure, unit-tested)
+lib/restocking/presentation.ts pick-quantity wording (boxes + rolls), job summaries (pure, unit-tested)
 lib/dispatch/scheduling.ts     schedule form parsing and what a failed save means (pure, unit-tested)
 lib/contracts/products.ts      ProductDto, shared by GET /api/products and the UI
 ```
@@ -121,6 +123,8 @@ Pages are server components that render one client component; Fluent is used onl
 | When a save fails | A stock, driver or vehicle change returns the dialog to the van list with the reason, and refreshes the board and eligibility. A refused schedule shows the server's message on the field. If the server doesn't answer, the UI re-reads the job: assigned to the chosen van means it was saved; still waiting means it wasn't, and you can retry. | The outcome is never guessed. Repeated submits are blocked while a request is in flight, and the server rejects assigning a job twice, so a retry can't create a second assignment or reservation. |
 | Who assigned it | The dialog asks for your name, which the API records as `assignedBy`. It's remembered for the next assignment on that page. | There's no sign-in, and the API requires a named actor. |
 | Scheduling rules (server) | A schedule is a calendar day plus an optional position in the van's day. New days can't be in the past (London today); keeping an existing past day, e.g. an imported visit, is allowed. A position needs a day and a van, and can't be one another job (not cancelled) already holds on that van that day. These are checked under the van's location lock, in the documented job → van order, so two saves can't take the same position. Changing a schedule never touches stock, reservations or the request date. | No time slots, durations, route optimisation or holiday rules exist, so none are invented. |
+| Restocking page | Read-only. It lists each van's open restock job, sorted by van, with the technician, what to collect, broken units to return and products the policy leaves out. "To collect" is the backend's stored outstanding quantity (minimum − working stock, never below zero, recalculated inside every stock change); minimum and working stock are shown beside it. Paper shows as boxes plus rolls, always with the exact roll count; whole-box rounding appears only as a labelled alternative. Broken units are a separate section, never netted. Nothing on the page can collect or return stock. | Reading the list must never change inventory: only the existing confirmed-collection operation does. |
+| Restock job data | `GET /api/restock-jobs` now also returns the van's status and technician, each item's `vanMinimum` and `working`, `brokenAwaitingReturn` (van broken balances, with serials where recorded) and `policyExclusions` (products below the minimum that automatic restocking skips, with the review flag and note). | The page needed these, and they come from data the service already reads. |
 | Eligibility on the board | Selecting a waiting request calls `GET /api/jobs/{id}/eligible-vans`. Vans are shown in the backend's ranking (eligible, then the job's zone), and each van lists the backend's reasons and shortage figures. The UI doesn't compute eligibility or shortages itself. Assigned work shows its van and schedule instead. | One source of truth for the rules. For assigned work, the job's own reservation would make its van look short, so that check belongs with reassignment. |
 | Waiting time | Shown from the API's `requestedOn` and `waitingDays`, as calendar days up to the board date. It is never taken from the scheduled date. A missing or unreadable request date, or one after the board date (two imported requests), is labelled as such instead of showing a number. | Waiting means how long the customer has waited since asking, whatever has been scheduled since. There are no working-day or holiday rules in the system, so the board shows no service-deadline or overdue indicator; the next-working-day promise isn't measured yet (see below). |
 | Board stock | Per van: Working (physical), Reserved, Available, with broken units, units waiting for a serial and counts below zero noted beside the product. | Figures come from the API, where "available" already excludes broken, unverified and reserved stock. |
@@ -155,12 +159,13 @@ There is no authentication yet, so write requests name their actor (`assignedBy`
 
 ## Not done yet / known limits
 
-- Screens: sign-in (preview), Dispatch board (assignment and scheduling) and Products. Still to build: reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
+- Screens: sign-in (preview), Dispatch board (assignment and scheduling), Restocking (read-only) and Products. The narrow/mobile layouts of Dispatch and Restocking haven't been polished yet. Still to build: confirming restock collection and broken returns on the page, reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
 - No authentication or roles. The sign-in screen is a preview, and every page and API route is open.
 - Products are read-only: no editing or deletion.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
 - Completion may use a job's own reservation plus free stock, never stock reserved for another job; recording work that physically used another job's units means reassigning that job first. A lower stock count can still leave assigned jobs short: they are flagged `RESERVATION_SHORTFALL` (all jobs sharing the shortfall, since which one runs short depends on order), not cancelled or reassigned.
 - Reservations are by quantity, not by serial. There's no "unit found broken" operation; use a correction.
+- Broken equipment on a van with no open restock job can't be returned through the current workflow (returns are recorded against a restock job). The Restocking page only shows vans that have one.
 - Hub shelves aren't counted, and the next-working-day promise isn't measured yet (`requestedOn`, `scheduledFor` and `completedOn` are stored for it).
 - The import is one-shot into an empty database. Serials on multi-product job rows stay on the source row, because the sheet doesn't say which serial belongs to which product.
 - Blocking reasons are recomputed for all open requests after each change. That's fine at this size, but would need targeting at scale.
