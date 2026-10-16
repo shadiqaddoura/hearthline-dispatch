@@ -1,4 +1,5 @@
-import type { ProductDto } from "@/lib/contracts/products";
+import type { ProductDetailDto, ProductDto } from "@/lib/contracts/products";
+import { emptyReferenceCounts } from "@/lib/products/references";
 
 /** A product row with ordinary defaults: counted each, no serials, restocked automatically. */
 export function product(overrides: Partial<ProductDto> & Pick<ProductDto, "sku" | "name">): ProductDto {
@@ -12,6 +13,18 @@ export function product(overrides: Partial<ProductDto> & Pick<ProductDto, "sku" 
     autoRestock: true,
     restockPolicyNeedsReview: false,
     restockPolicyNote: null,
+    ...overrides,
+  };
+}
+
+/** What `GET /api/products/:id` returns for a product nothing refers to, unless overridden. */
+export function productDetail(base: ProductDto, overrides: Partial<ProductDetailDto> = {}): ProductDetailDto {
+  return {
+    ...base,
+    references: emptyReferenceCounts(),
+    removableRestockLines: 0,
+    locked: { sku: null, baseUnit: null, serialised: null },
+    deletion: { allowed: true, reason: null },
     ...overrides,
   };
 }

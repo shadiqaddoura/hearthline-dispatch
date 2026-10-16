@@ -1,7 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { disposeTabster, getTabster } from "tabster";
 import { afterEach, vi } from "vitest";
+
+// Fluent dialogs and drawers mount in a portal and animate; the default 1s is tight when files run in parallel.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => {
   cleanup();
