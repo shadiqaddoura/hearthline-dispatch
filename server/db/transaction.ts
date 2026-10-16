@@ -19,7 +19,8 @@ export function runInTransaction<T>(work: (tx: Tx) => Promise<T>, options: { tim
 //   1. the job row(s) (if the operation is about jobs; several are taken sorted by id)
 //   2. the location rows it touches, sorted by id
 //   3. the technician row (driver changes only)
-//   4. the open restock job of a van (only while its location is already locked)
+//   4. equipment unit rows named by serial, sorted (units arriving at a van)
+//   5. the open restock job of a van (only while its location is already locked)
 //
 // Locking the location row serialises all stock and reservation changes for that
 // van: "check availability, then reserve" cannot interleave with another assignment,
@@ -39,6 +40,13 @@ export async function lockLocations(tx: Tx, locationIds: string[]) {
 /** Serialises driver changes for one technician (a technician drives one van at a time). */
 export async function lockTechnician(tx: Tx, technicianId: string) {
   await tx.$queryRaw`SELECT id FROM technicians WHERE id = ${technicianId} FOR UPDATE`;
+}
+
+/** Locks existing devices by serial, so two receipts of the same device cannot both pass their checks. */
+export async function lockUnitsBySerial(tx: Tx, serials: string[]) {
+  const sorted = [...new Set(serials)].sort();
+  if (sorted.length === 0) return;
+  await tx.$queryRaw`SELECT id FROM equipment_units WHERE "serialNumber" = ANY(${sorted}::text[]) ORDER BY "serialNumber" FOR UPDATE`;
 }
 
 export async function lockRestockJob(tx: Tx, restockJobId: string) {

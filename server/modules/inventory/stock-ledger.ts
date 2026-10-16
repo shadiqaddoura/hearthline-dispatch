@@ -1,6 +1,7 @@
 import "server-only";
-import type { Tx } from "@/server/db/transaction";
+import { lockUnitsBySerial, type Tx } from "@/server/db/transaction";
 import { AppError } from "@/server/http/errors";
+import { Prisma } from "@/generated/prisma/client";
 import type { StockCondition, StockMovementType, UnitStatus } from "@/generated/prisma/enums";
 
 // The only code that changes stock balances and serialised unit rows.
@@ -43,6 +44,7 @@ export async function moveStock(tx: Tx, input: MovementInput) {
   const toLocation = await trackedLocationId(tx, input.to);
   // Before any write: a bad serial list must not reach the balances.
   if (product.serialised) assertSerialsMatchQuantity(input, fromLocation);
+  if (product.serialised && toLocation && !fromLocation) await assertArrivingUnitsValid(tx, input, product.sku);
 
   if (fromLocation) {
     const after = await changeBalance(tx, fromLocation, input.productId, input.condition, -input.quantity);
@@ -218,16 +220,14 @@ async function moveUnits(tx: Tx, input: MovementInput, fromLocation: string | nu
 
   if (toLocation) {
     // Arriving from outside the tracked locations (hub, customer branch, or a count).
+    // Known serials were checked and locked by assertArrivingUnitsValid.
     const serials = input.serials ?? [];
     for (const serialNumber of serials) {
       const known = await tx.equipmentUnit.findUnique({ where: { serialNumber } });
-      if (known?.status === "IN_STOCK") {
-        // Already counted in a van: arriving here without leaving there would double-count it.
-        throw new AppError("CONFLICT", `Unit ${serialNumber} is already in stock in another van; transfer it instead`);
-      }
-      const unit = { productId: input.productId, verification: "VERIFIED" as const, condition: input.condition, ...destination };
-      if (known) await tx.equipmentUnit.update({ where: { id: known.id }, data: unit });
-      else await tx.equipmentUnit.create({ data: { ...unit, serialNumber } });
+      // Only where it is and its condition change; product and serial are its identity.
+      const arrival = { verification: "VERIFIED" as const, condition: input.condition, ...destination };
+      if (known) await tx.equipmentUnit.update({ where: { id: known.id }, data: arrival });
+      else await createUnit(tx, { ...arrival, productId: input.productId, serialNumber });
     }
     const unidentified = input.quantity - serials.length;
     if (unidentified > 0) {
@@ -265,6 +265,68 @@ function assertSerialsMatchQuantity(input: MovementInput, fromLocation: string |
       serials: serials.length,
       quantity: input.quantity,
     });
+  }
+}
+
+/**
+ * A serial arriving at a van from outside the vans must be new, or a known device of
+ * the same product that is where this movement says it comes from: at that hub for a
+ * collection or hub transfer, installed at that branch for a unit pulled out on site.
+ * Checked before anything is written, with the device rows locked so two receipts of
+ * the same device cannot both pass.
+ */
+async function assertArrivingUnitsValid(tx: Tx, input: MovementInput, sku: string) {
+  const serials = input.serials ?? [];
+  if (serials.length === 0) return;
+  await lockUnitsBySerial(tx, serials);
+  const known = await tx.equipmentUnit.findMany({
+    where: { serialNumber: { in: serials } },
+    include: { product: { select: { sku: true } } },
+  });
+
+  const from = input.from;
+  const source = from && "branchId" in from ? "this customer branch" : from ? "the hub" : "a count";
+  for (const unit of known) {
+    if (unit.productId !== input.productId) {
+      throw new AppError("VALIDATION_FAILED", `Serial ${unit.serialNumber} belongs to a ${unit.product.sku}, not a ${sku}; check the serial and product`, {
+        serialNumber: unit.serialNumber,
+        recordedProduct: unit.product.sku,
+        submittedProduct: sku,
+      });
+    }
+    const comesFromSource =
+      from && "branchId" in from
+        ? unit.status === "INSTALLED" && unit.branchId === from.branchId
+        : from && "locationId" in from
+          ? unit.status === "AT_HUB" && unit.locationId === from.locationId
+          : false;
+    if (!comesFromSource) {
+      throw new AppError("CONFLICT", `Unit ${unit.serialNumber} is recorded as ${UNIT_WHEREABOUTS[unit.status]}, so it cannot arrive from ${source}`, {
+        serialNumber: unit.serialNumber,
+        status: unit.status,
+      });
+    }
+  }
+}
+
+const UNIT_WHEREABOUTS: Record<UnitStatus, string> = {
+  IN_STOCK: "in stock in a van (transfer it instead)",
+  INSTALLED: "installed at a customer branch",
+  AT_HUB: "at the hub",
+  WRITTEN_OFF: "written off",
+};
+
+/** Creates a device; a concurrent receipt of the same new serial loses on the unique constraint. */
+async function createUnit(tx: Tx, data: Prisma.EquipmentUnitUncheckedCreateInput) {
+  try {
+    await tx.equipmentUnit.create({ data });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new AppError("CONFLICT", `Unit ${data.serialNumber} was recorded by another operation at the same time; check where it is and retry`, {
+        serialNumber: data.serialNumber,
+      });
+    }
+    throw error;
   }
 }
 
