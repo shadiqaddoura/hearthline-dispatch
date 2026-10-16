@@ -62,3 +62,15 @@ Verification: 29 targeted UI tests passed (board, assignment and product compari
 
 - [V04 desktop product comparison](../output/playwright/v04-comparison-desktop.png)
 - [V04 mobile comparison in request context](../output/playwright/v04-comparison-mobile.png)
+
+### Stock columns and full-inventory title
+
+Required products retain the Product / Needed / Available / Shortfall comparison. Numeric stock breakdowns no longer appear as prose under product names. The full van inventory has a visible **Full inventory on {van}** heading and the same accessible table name, with Product / Working / Reserved / Available / Broken / Unverified columns. Mobile renders those same figures as labelled product cards. Imported-negative working counts remain visible with a recount warning.
+
+Assignment dialogs expose required-product stock through **Stock details**; the board uses its existing full-inventory section instead of duplicating another stock dataset. Product names and SKUs remain identifiable in both sections.
+
+Verification: 32 targeted UI tests passed, including separate condition-count columns, the visible inventory heading, expandable required-product stock, mobile numeric labels and negative-count warnings. TypeScript and lint passed. V04 desktop and mobile rendering was checked in the running preview, with no database mutations or backend changes.
+
+- [Updated clean required-products comparison](../output/playwright/v04-comparison-desktop.png)
+- [Titled full inventory, desktop](../output/playwright/v04-full-inventory-desktop.png)
+- [Titled full inventory, mobile](../output/playwright/v04-full-inventory-mobile.png)

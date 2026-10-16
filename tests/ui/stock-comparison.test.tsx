@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { JobItemsOnVan } from "@/components/dispatch/stock-summary";
+import { JobItemsOnVan, StockTable } from "@/components/dispatch/stock-summary";
 import { testBoard, waitingJob } from "../support/dispatch-fixtures";
 import { renderWithFluent } from "../support/render";
 
@@ -27,9 +27,9 @@ describe("required product comparison", () => {
         .slice(1)
         .map((cell) => cell.textContent),
     ).toEqual(["2", "0", "2"]);
-    expect(within(row).getByText("Unverified serials: 1")).toBeVisible();
+    expect(within(row).queryByText(/Unverified serials/)).not.toBeInTheDocument();
     expect(screen.getByText(/unverified units are physically present but unavailable/)).toBeVisible();
-    expect(within(row).getByText("Working 3 · Reserved 1 · Broken 1")).toBeVisible();
+    expect(within(row).queryByText(/Working 3/)).not.toBeInTheDocument();
     expect(within(row).getByText("TEST-PRN")).toBeVisible();
   });
 
@@ -75,7 +75,80 @@ describe("required product comparison", () => {
           .getAllByRole("definition")
           .map((value) => value.textContent),
       ).toEqual(["2", "0", "2"]);
-      expect(within(card).getByText(/Unverified serials: 1/)).toBeVisible();
+      expect(within(card).queryByText(/Working|Unverified serials/)).not.toBeInTheDocument();
+    } finally {
+      media.mockRestore();
+    }
+  });
+});
+
+describe("structured stock details", () => {
+  it("has a visible full-inventory title and separate numeric condition columns", () => {
+    renderWithFluent(
+      <StockTable
+        lines={[
+          { ...lines[0], working: 11, verifiedWorking: 7, reserved: 2, available: 5, broken: 3, needsVerification: 4 },
+        ]}
+        title="Full inventory on T-N"
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Full inventory on T-N" })).toBeVisible();
+    const table = screen.getByRole("table", { name: "Full inventory on T-N" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["Product", "Working", "Reserved", "Available", "Broken", "Unverified"]);
+    const row = within(table).getByRole("row", { name: /Test printer/ });
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .slice(1)
+        .map((cell) => cell.textContent),
+    ).toEqual(["11", "2", "5", "3", "4"]);
+    expect(within(table).queryByText(/1 broken|1 need a serial/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the comparison to four columns and reveals required-product stock only on request", async () => {
+    const { user } = renderWithFluent(
+      <JobItemsOnVan items={[item]} lines={lines} vanCode="T-N" shortages={shortages} showStockDetails />,
+    );
+    expect(screen.getByRole("table", { name: "Product comparison on T-N" })).toBeVisible();
+    expect(screen.queryByRole("table", { name: "Required-product stock on T-N" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stock details" }));
+    const table = screen.getByRole("table", { name: "Required-product stock on T-N" });
+    expect(within(table).getAllByRole("row")).toHaveLength(2); // only the required printer, not all van stock
+    expect(within(table).queryByText("Test cable")).not.toBeInTheDocument();
+    expect(
+      within(within(table).getByRole("row", { name: /Test printer/ }))
+        .getAllByRole("cell")
+        .slice(1)
+        .map((cell) => cell.textContent),
+    ).toEqual(["3", "1", "1", "1", "1"]);
+  });
+
+  it("keeps mobile stock counts labelled and preserves negative-count warnings", () => {
+    const original = vi.mocked(window.matchMedia).getMockImplementation()!;
+    const media = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({ ...original(query), matches: query === "(max-width: 1023px)" }));
+    try {
+      renderWithFluent(
+        <StockTable lines={[{ ...lines[0], working: -2, available: 0 }]} title="Full inventory on T-N" />,
+      );
+      expect(screen.getByRole("heading", { name: "Full inventory on T-N" })).toBeVisible();
+      const card = within(screen.getByRole("list", { name: "Full inventory on T-N" })).getByRole("listitem");
+      expect(
+        within(card)
+          .getAllByRole("term")
+          .map((term) => term.textContent),
+      ).toEqual(["Working", "Reserved", "Available", "Broken", "Unverified"]);
+      expect(
+        within(card)
+          .getAllByRole("definition")
+          .map((value) => value.textContent),
+      ).toEqual(["-2", "1", "0", "1", "1"]);
+      expect(within(card).getByText("Count below zero — needs a recount")).toBeVisible();
     } finally {
       media.mockRestore();
     }

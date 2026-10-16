@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +23,15 @@ import type { JobItemDto } from "@/lib/contracts/jobs";
 
 const useStyles = makeStyles({
   table: { width: "100%" },
+  stockTable: { width: "100%", tableLayout: "fixed" },
+  stockNumber: {
+    textAlign: "end",
+    fontVariantNumeric: "tabular-nums",
+    width: "12%",
+    paddingInline: tokens.spacingHorizontalXS,
+    overflowWrap: "anywhere",
+  },
+  heading: { margin: 0 },
   number: { textAlign: "end", fontVariantNumeric: "tabular-nums", width: "64px" },
   product: { display: "flex", flexDirection: "column", paddingBlock: tokens.spacingVerticalXXS },
   sku: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200 },
@@ -53,22 +66,79 @@ const useStyles = makeStyles({
  * the API: "available" already excludes broken units, units waiting for a
  * serial and stock reserved for other jobs.
  */
-export function StockTable({ lines, caption }: { lines: StockLineDto[]; caption: string }) {
+export function StockTable({ lines, title, asOf }: { lines: StockLineDto[]; title: string; asOf?: string }) {
   const styles = useStyles();
+  const mobile = useMediaQuery("(max-width: 1023px)") ?? false;
+  const quantities = (line: StockLineDto) =>
+    [
+      ["Working", line.working],
+      ["Reserved", line.reserved],
+      ["Available", line.available],
+      ["Broken", line.broken],
+      ["Unverified", line.needsVerification ?? "—"],
+    ] as const;
+  const product = (line: StockLineDto) => (
+    <span className={styles.product}>
+      <span className={styles.productName}>{line.name}</span>
+      <span className={styles.sku}>{line.sku}</span>
+      {line.working < 0 && <span className={styles.short}>Count below zero — needs a recount</span>}
+    </span>
+  );
   return (
-    <Table size="extra-small" aria-label={caption} className={styles.table}>
-      <StockHeader />
-      <TableBody>
-        {lines.map((line) => (
-          <TableRow key={line.productId}>
-            <TableCell>
-              <ProductCell line={line} />
-            </TableCell>
-            <NumberCells line={line} />
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <section className={styles.comparison} aria-label={title}>
+      <Text as="h4" weight="semibold" className={styles.heading}>
+        {title}
+      </Text>
+      {asOf && (
+        <Text size={200} className={styles.note}>
+          As of {asOf}
+        </Text>
+      )}
+      {mobile ? (
+        <ul className={styles.cards} aria-label={title}>
+          {lines.map((line) => (
+            <li key={line.productId} className={styles.item}>
+              {product(line)}
+              <dl className={styles.quantities}>
+                {quantities(line).map(([label, value]) => (
+                  <div key={label}>
+                    <dt className={styles.note}>{label}</dt>
+                    <dd className={mergeClasses(styles.value, label === "Working" && line.working < 0 && styles.short)}>
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Table size="small" aria-label={title} className={styles.stockTable}>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Product</TableHeaderCell>
+              {["Working", "Reserved", "Available", "Broken", "Unverified"].map((label) => (
+                <TableHeaderCell key={label} className={styles.stockNumber}>
+                  {label}
+                </TableHeaderCell>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((line) => (
+              <TableRow key={line.productId}>
+                <TableCell>{product(line)}</TableCell>
+                {quantities(line).map(([label, value]) => (
+                  <TableCell key={label} className={styles.stockNumber}>
+                    <span className={label === "Working" && line.working < 0 ? styles.short : undefined}>{value}</span>
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
   );
 }
 
@@ -78,12 +148,15 @@ export function JobItemsOnVan({
   lines,
   vanCode,
   shortages,
+  showStockDetails = false,
 }: {
   items: JobItemDto[];
   lines: StockLineDto[];
   vanCode: string;
   /** Undefined for assigned work: its own reservations make a new-work check inappropriate. */
   shortages?: StockShortageDto[];
+  /** Assignment dialogs have no full-inventory section; retain stock detail behind a disclosure. */
+  showStockDetails?: boolean;
 }) {
   const styles = useStyles();
   const mobile = useMediaQuery("(max-width: 600px)") ?? false;
@@ -96,21 +169,12 @@ export function JobItemsOnVan({
       needed: shortage?.required ?? item.quantity,
       available: shortage?.available ?? line?.available ?? null,
       shortfall: shortage ? Math.max(0, shortage.required - shortage.available) : shortages ? 0 : null,
-      unverified: shortage?.needsVerification ?? line?.needsVerification ?? 0,
     };
   });
-  const product = ({ item, line, unverified }: (typeof rows)[number]) => (
+  const product = ({ item }: (typeof rows)[number]) => (
     <span className={styles.product}>
       <span className={styles.productName}>{item.name}</span>
       <span className={styles.sku}>{item.sku}</span>
-      {unverified > 0 && (
-        <span className={styles.note}>Unverified serials: {unverified}</span>
-      )}
-      {line && (
-        <span className={styles.note}>
-          Working {line.working} · Reserved {line.reserved} · Broken {line.broken}
-        </span>
-      )}
     </span>
   );
 
@@ -170,56 +234,19 @@ export function JobItemsOnVan({
           </TableBody>
         </Table>
       )}
+      {showStockDetails && (
+        <Accordion collapsible>
+          <AccordionItem value="stock-details">
+            <AccordionHeader size="small">Stock details</AccordionHeader>
+            <AccordionPanel>
+              <StockTable
+                lines={lines.filter((line) => items.some((item) => item.productId === line.productId))}
+                title={`Required-product stock on ${vanCode}`}
+              />
+            </AccordionPanel>
+          </AccordionItem>
+        </Accordion>
+      )}
     </section>
-  );
-}
-
-function StockHeader() {
-  const styles = useStyles();
-  return (
-    <TableHeader>
-      <TableRow>
-        <TableHeaderCell>Product</TableHeaderCell>
-        <TableHeaderCell className={styles.number}>Working</TableHeaderCell>
-        <TableHeaderCell className={styles.number}>Reserved</TableHeaderCell>
-        <TableHeaderCell className={styles.number}>Available</TableHeaderCell>
-      </TableRow>
-    </TableHeader>
-  );
-}
-
-function ProductCell({ line }: { line: StockLineDto }) {
-  const styles = useStyles();
-  return (
-    <span className={styles.product}>
-      <span className={styles.sku}>{line.sku}</span>
-      <Notes line={line} />
-    </span>
-  );
-}
-
-/** Stock that is in the van but can never be promised, and counts that need a recount. */
-function notesFor(line: StockLineDto): string[] {
-  return [
-    line.working < 0 ? "count below zero, needs a recount" : null,
-    line.broken > 0 ? `${line.broken} broken` : null,
-    line.needsVerification ? `${line.needsVerification} need a serial` : null,
-  ].filter((note): note is string => note !== null);
-}
-
-function Notes({ line }: { line: StockLineDto }) {
-  const styles = useStyles();
-  const notes = notesFor(line);
-  return notes.length > 0 ? <span className={styles.note}>{notes.join(" · ")}</span> : null;
-}
-
-function NumberCells({ line }: { line: StockLineDto }) {
-  const styles = useStyles();
-  return (
-    <>
-      <TableCell className={styles.number}>{line.working}</TableCell>
-      <TableCell className={styles.number}>{line.reserved}</TableCell>
-      <TableCell className={styles.number}>{line.available}</TableCell>
-    </>
   );
 }

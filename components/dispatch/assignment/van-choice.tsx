@@ -88,6 +88,7 @@ export function VanChoice({ job, eligibility, vans, value, onChange, error }: Va
           <VanEligibilityReasons eligibility={selected} />
           {selectedBoardVan && (
             <JobItemsOnVan
+              showStockDetails
               items={job.items}
               lines={selectedBoardVan.stock.lines}
               vanCode={selected.code}
@@ -115,6 +116,7 @@ export function VanChoice({ job, eligibility, vans, value, onChange, error }: Va
                         vanStatus={status ? VAN_STATUS_LABEL[status] : undefined}
                       />
                       <JobItemsOnVan
+                        showStockDetails
                         items={job.items}
                         lines={boardVan(van.vanId)?.stock.lines ?? []}
                         vanCode={van.code}

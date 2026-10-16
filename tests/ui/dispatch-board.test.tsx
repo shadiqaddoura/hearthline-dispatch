@@ -129,7 +129,13 @@ describe("DispatchBoard", () => {
         .slice(1)
         .map((cell) => cell.textContent),
     ).toEqual(["2", "1", "1"]);
-    expect(within(northRow).getByText(/Unverified serials: 1/)).toBeVisible();
+    const northStock = within(north).getByRole("table", { name: "Full inventory on T-N" });
+    expect(
+      within(within(northStock).getByRole("row", { name: /TEST-PRN/ }))
+        .getAllByRole("cell")
+        .slice(1)
+        .map((cell) => cell.textContent),
+    ).toEqual(["3", "1", "1", "1", "1"]);
     expect(within(north).queryByText(/TEST-PRN: needs/)).not.toBeInTheDocument();
     await user.click(within(vanCard("T-S")).getByRole("button", { name: /Inventory & reasons/ }));
     const southComparison = within(vanCard("T-S")).getByRole("table", { name: "Product comparison on T-S" });
@@ -147,13 +153,14 @@ describe("DispatchBoard", () => {
     const north = vanCard("T-N");
 
     await user.click(within(north).getByRole("button", { name: /Inventory & reasons/ }));
-    const row = within(within(north).getByRole("table", { name: /T-N stock/ })).getByRole("row", { name: /TEST-PRN/ });
+    const row = within(within(north).getByRole("table", { name: "Full inventory on T-N" })).getByRole("row", {
+      name: /TEST-PRN/,
+    });
     const cells = within(row)
       .getAllByRole("cell")
       .map((c) => c.textContent);
-    expect(cells[0]).toContain("1 broken");
-    expect(cells[0]).toContain("1 need a serial");
-    expect(cells.slice(1)).toEqual(["3", "1", "1"]); // working, reserved, available
+    expect(within(north).getByRole("heading", { name: "Full inventory on T-N" })).toBeVisible();
+    expect(cells.slice(1)).toEqual(["3", "1", "1", "1", "1"]); // working, reserved, available, broken, unverified
   });
 
   it("shows assigned work with its van and schedule, without asking for eligibility", async () => {
@@ -293,14 +300,12 @@ it("retains imported-negative warnings in expanded inventory", async () => {
   const card = vanCard("T-N");
   expect(within(card).queryByRole("table")).not.toBeInTheDocument();
   await user.click(within(card).getByRole("button", { name: /Inventory & reasons/ }));
-  expect(within(card).getByText(/count below zero, needs a recount/)).toBeVisible();
-  expect(within(card).getByText(/1 broken/)).toBeVisible();
-  expect(within(card).getByText(/1 need a serial/)).toBeVisible();
+  expect(within(card).getByText("Count below zero — needs a recount")).toBeVisible();
   const row = within(card).getByRole("row", { name: /TEST-PRN/ });
   expect(
     within(row)
       .getAllByRole("cell")
       .slice(1)
       .map((cell) => cell.textContent),
-  ).toEqual(["-2", "1", "0"]);
+  ).toEqual(["-2", "1", "0", "1", "1"]);
 });

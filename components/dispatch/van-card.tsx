@@ -127,10 +127,10 @@ export function VanCard({ entry, boardDate, selectedJob, eligibility }: VanCardP
               />
             )}
             <Text size={200} className={styles.secondary}>
-              Working is physical stock; reserved is promised to jobs. Available excludes reservations, broken units and
-              units without verified serials.
+              Working counts working-condition stock; broken units are separate. Reserved is promised to jobs. Available
+              excludes reservations and unverified units.
             </Text>
-            <StockTable lines={stock.lines} caption={`${van.code} stock on ${boardDate}`} />
+            <StockTable lines={stock.lines} title={`Full inventory on ${van.code}`} asOf={boardDate} />
             {assignedJobs.length > 0 && (
               <section aria-label={`${van.code} assigned jobs`}>
                 <Text weight="semibold">Assigned jobs</Text>
