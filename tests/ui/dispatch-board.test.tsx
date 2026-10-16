@@ -129,7 +129,7 @@ describe("DispatchBoard", () => {
     expect(cells.slice(1)).toEqual(["3", "1", "1"]); // working, reserved, available
   });
 
-  it("shows assigned work with its van and schedule, without asking for eligibility or offering actions", async () => {
+  it("shows assigned work with its van and schedule, without asking for eligibility", async () => {
     const { user, loadEligibility } = renderBoard();
     await screen.findByText("Olive Room");
 
@@ -142,9 +142,9 @@ describe("DispatchBoard", () => {
     expect(within(details).getByText("Waiting 6 days")).toBeVisible();
     expect(within(vanCard("T-N")).getByText("Has T-ASSIGNED")).toBeVisible();
     expect(loadEligibility).not.toHaveBeenCalled();
-    // No assignment or scheduling actions: the only buttons naming them are the request list items.
-    const actions = screen.getAllByRole("button").filter((b) => !b.hasAttribute("aria-pressed"));
-    expect(actions.filter((b) => /assign|schedul/i.test(b.textContent ?? ""))).toEqual([]);
+    // Assigned work can be rescheduled, but not assigned again or moved to another van.
+    expect(within(details).getByRole("button", { name: "Change schedule…" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Assign to a van|Reassign|Move/ })).not.toBeInTheDocument();
   });
 
   it("shows only the latest request's eligibility when the selection changes quickly", async () => {

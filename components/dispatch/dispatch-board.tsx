@@ -22,6 +22,7 @@ import { useMediaQuery } from "@/components/shell/use-media-query";
 import type { DispatchBoardDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
 import { formatDay, isIsoDay } from "@/lib/dispatch/presentation";
+import { useJobActions } from "./assignment/use-job-actions";
 import { BoardError, BoardLoading } from "./board-states";
 import { EligibilitySummary } from "./eligibility";
 import { RequestDetails } from "./request-details";
@@ -108,6 +109,15 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
     loadEligibility,
   );
   const ranking = eligibility.status === "ready" ? eligibility.vans : null;
+  const jobActions = useJobActions({
+    board,
+    job: selectedJob,
+    eligibility,
+    retryEligibility,
+    reloadBoard: reload,
+  });
+  // On phones the confirmation appears inside the open details drawer, where focus is.
+  const noticeInDrawer = narrow && detailsOpen;
 
   const select = (job: JobDto) => {
     setSelectedId(job.id);
@@ -122,7 +132,8 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
       <div className={styles.intro}>
         <Text as="p" className={styles.description}>
           Unfinished customer work beside every van. Waiting time counts calendar days from each request date
-          {boardDay ? ` to ${boardDay}` : ""}. Assignment and scheduling come next; this board is read-only.
+          {boardDay ? ` to ${boardDay}` : ""}. Assign a waiting request to a van, or change an assigned job&apos;s day
+          and position.
         </Text>
         <Button
           icon={<ArrowClockwiseRegular />}
@@ -137,6 +148,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
         {selectedJob ? `Selected ${selectedJob.reference}, ${selectedJob.customer.name}` : ""}
       </span>
 
+      {!noticeInDrawer && jobActions.notice}
       {state.status === "loading" && <BoardLoading />}
       {state.status === "error" && <BoardError message={state.message} onRetry={reload} />}
       {state.status === "ready" && state.refreshError && (
@@ -203,6 +215,8 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
                   boardDate={board.date}
                   eligibility={eligibility}
                   onRetryEligibility={retryEligibility}
+                  notice={noticeInDrawer ? jobActions.notice : null}
+                  actions={jobActions.actionButton}
                   footer={
                     <Button
                       appearance="primary"
@@ -239,6 +253,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
                   boardDate={board.date}
                   eligibility={eligibility}
                   onRetryEligibility={retryEligibility}
+                  actions={jobActions.actionButton}
                 />
               ) : (
                 <Text className={styles.hint}>
@@ -255,6 +270,7 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
           </div>
         </div>
       )}
+      {jobActions.dialogs}
     </div>
   );
 }

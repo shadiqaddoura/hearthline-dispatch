@@ -50,6 +50,7 @@ const useStyles = makeStyles({
   sku: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200 },
   quantity: { textAlign: "end", width: "80px", fontVariantNumeric: "tabular-nums" },
   sectionTitle: { margin: 0 },
+  actions: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS },
 });
 
 interface RequestDetailsProps {
@@ -58,16 +59,29 @@ interface RequestDetailsProps {
   boardDate: string;
   eligibility: EligibilityState;
   onRetryEligibility: () => void;
+  /** A confirmation to show above the details, e.g. after assigning. */
+  notice?: ReactNode;
+  /** Assignment or scheduling controls for this job. */
+  actions?: ReactNode;
   /** Extra controls for the layout, e.g. "Show vans" on phones. */
   footer?: ReactNode;
 }
 
-export function RequestDetails({ job, boardDate, eligibility, onRetryEligibility, footer }: RequestDetailsProps) {
+export function RequestDetails({
+  job,
+  boardDate,
+  eligibility,
+  onRetryEligibility,
+  notice,
+  actions,
+  footer,
+}: RequestDetailsProps) {
   const styles = useStyles();
   const waiting = describeWaitingTime(job);
 
   return (
     <article className={styles.root} aria-labelledby={`request-${job.id}-title`}>
+      {notice}
       <header className={styles.header}>
         <Text as="h2" id={`request-${job.id}-title`} size={500} weight="semibold" className={styles.title}>
           {job.customer.name} — {job.branch.name}
@@ -89,6 +103,15 @@ export function RequestDetails({ job, boardDate, eligibility, onRetryEligibility
           {waitingLabel(waiting)}
           <span className={styles.hint}>{waitingHint(waiting, boardDate)}</span>
         </dd>
+        {job.status === "REQUESTED" && job.scheduledFor && (
+          <>
+            <dt className={styles.term}>Planned day</dt>
+            <dd className={styles.definition}>
+              {scheduleLabel(job)}
+              <span className={styles.hint}>Recorded before assignment; it can be kept or changed when assigning.</span>
+            </dd>
+          </>
+        )}
         {job.status !== "REQUESTED" && (
           <>
             <dt className={styles.term}>Van</dt>
@@ -156,10 +179,14 @@ export function RequestDetails({ job, boardDate, eligibility, onRetryEligibility
         <EligibilitySummary state={eligibility} onRetry={onRetryEligibility} />
       ) : (
         <Text size={200} className={styles.secondary}>
-          Already on {job.van?.code ?? "a van"}. Moving or rescheduling it isn&apos;t available yet.
+          Already on {job.van?.code ?? "a van"}.
+          {job.status === "ASSIGNED"
+            ? " Its day and position can change; moving it to another van isn't available yet."
+            : " It has started, so its schedule can't change."}
         </Text>
       )}
 
+      {actions && <div className={styles.actions}>{actions}</div>}
       {footer}
     </article>
   );
