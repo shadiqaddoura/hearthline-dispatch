@@ -13,32 +13,12 @@ import type {
   TransferStockRequest,
   VerifyUnitRequest,
 } from "@/lib/contracts/inventory";
-import type { ProductDto } from "@/lib/contracts/products";
 import type { StockMovement } from "@/generated/prisma/client";
 import { assignableQuantity } from "./availability";
 import { buildStockLines, getBalance, loadStockFigures } from "./inventory.repository";
 import { applyCount, moveStock } from "./stock-ledger";
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
-
-export async function listProducts(): Promise<ProductDto[]> {
-  return prisma.product.findMany({
-    orderBy: { sku: "asc" },
-    select: {
-      id: true,
-      sku: true,
-      name: true,
-      serialised: true,
-      baseUnit: true,
-      packUnit: true,
-      packSize: true,
-      vanMinimum: true,
-      autoRestock: true,
-      restockPolicyNeedsReview: true,
-      restockPolicyNote: true,
-    },
-  });
-}
 
 export async function getLocationStock(locationId: string): Promise<LocationStockDto> {
   const location = await prisma.location.findUnique({ where: { id: locationId }, include: { van: true } });
