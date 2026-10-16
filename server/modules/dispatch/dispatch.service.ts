@@ -16,6 +16,7 @@ import {
 } from "@/server/modules/inventory/inventory.repository";
 import { toVanDto, vanInclude } from "@/server/modules/fleet/fleet.repository";
 import { findJob, jobInclude, toJobDto, type JobRow } from "@/server/modules/jobs/jobs.repository";
+import { assertSlotAvailable } from "@/server/modules/jobs/schedule";
 import { fromIsoDate, todayIsoDate } from "@/lib/dates";
 import type { AssignJobRequest, DispatchBoardDto, ReassignJobRequest, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
@@ -79,6 +80,15 @@ export async function assignJob(jobId: string, input: AssignJobRequest): Promise
     if (job.status !== "REQUESTED") throw invalidState(`A ${job.status.toLowerCase()} job cannot be assigned`);
 
     const van = await reserveOnVan(tx, job, input.vanId);
+    // Still under the van's location lock: no other save can take this position meanwhile.
+    // A rejected slot rolls back the reservations made just above.
+    await assertSlotAvailable(tx, {
+      jobId,
+      van: { id: van.id, code: van.code },
+      scheduledFor: input.scheduledFor ?? null,
+      sequence: input.sequence ?? null,
+      currentScheduledFor: job.scheduledFor,
+    });
     await tx.job.update({
       where: { id: jobId },
       data: {
@@ -147,7 +157,7 @@ async function reserveOnVan(tx: Tx, job: JobRow, vanId: string) {
   }
 
   await createReservations(tx, job.id, found.locationId, job.items);
-  return { id: vanId, technicianId: candidate.technician.id };
+  return { id: vanId, code: found.code, technicianId: candidate.technician.id };
 }
 
 // ─── Blocking reasons ───────────────────────────────────────────────────────

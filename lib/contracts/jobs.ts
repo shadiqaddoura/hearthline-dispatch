@@ -25,11 +25,17 @@ export const listJobsQuery = z.object({
   open: z.enum(["true", "false"]).optional(),
 });
 
-export const scheduleJobRequest = z.object({
-  scheduledFor: isoDateSchema.nullable(),
-  /** Position in the van's day, set manually by dispatch. */
-  sequence: z.number().int().min(1).nullable(),
-});
+export const scheduleJobRequest = z
+  .object({
+    /** Calendar day of the visit. Separate from requestedOn, which never changes. */
+    scheduledFor: isoDateSchema.nullable(),
+    /** Position in the van's day, set manually by dispatch. */
+    sequence: z.number().int().min(1).nullable(),
+  })
+  .refine((s) => s.sequence === null || s.scheduledFor !== null, {
+    message: "A position in the van's day needs a scheduled day",
+    path: ["sequence"],
+  });
 
 export type ScheduleJobRequest = z.infer<typeof scheduleJobRequest>;
 

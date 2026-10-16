@@ -4,12 +4,18 @@ import type { VanDto } from "./fleet";
 import type { LocationStockDto } from "./inventory";
 import type { JobDto } from "./jobs";
 
-export const assignJobRequest = z.object({
-  vanId: idSchema,
-  scheduledFor: isoDateSchema.optional(),
-  sequence: z.number().int().min(1).optional(),
-  assignedBy: actorSchema,
-});
+export const assignJobRequest = z
+  .object({
+    vanId: idSchema,
+    /** Optional first schedule, saved in the same transaction as the assignment. */
+    scheduledFor: isoDateSchema.optional(),
+    sequence: z.number().int().min(1).optional(),
+    assignedBy: actorSchema,
+  })
+  .refine((a) => a.sequence === undefined || a.scheduledFor !== undefined, {
+    message: "A position in the van's day needs a scheduled day",
+    path: ["sequence"],
+  });
 
 export type AssignJobRequest = z.infer<typeof assignJobRequest>;
 

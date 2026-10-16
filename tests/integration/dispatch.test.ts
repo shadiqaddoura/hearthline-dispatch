@@ -194,10 +194,10 @@ describe("dispatch board", () => {
     const later = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-LATER");
     const first = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-FIRST");
     const unscheduled = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-UNSCHEDULED");
-    await assignJob(later.id, { vanId: w.north.id, scheduledFor: "2026-10-20", sequence: 2, assignedBy: "Noor" });
-    await assignJob(first.id, { vanId: w.north.id, scheduledFor: "2026-10-18", sequence: 1, assignedBy: "Noor" });
+    await assignJob(later.id, { vanId: w.north.id, scheduledFor: "2099-10-20", sequence: 2, assignedBy: "Noor" });
+    await assignJob(first.id, { vanId: w.north.id, scheduledFor: "2099-10-18", sequence: 1, assignedBy: "Noor" });
     await assignJob(unscheduled.id, { vanId: w.north.id, assignedBy: "Noor" });
-    await scheduleJob(first.id, { scheduledFor: "2026-10-18", sequence: 1 });
+    await scheduleJob(first.id, { scheduledFor: "2099-10-18", sequence: 1 });
     await startJob(first.id);
 
     const board = await getDispatchBoard("2026-10-16");
