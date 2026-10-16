@@ -44,12 +44,18 @@ export interface VanEligibilityDto {
 }
 
 export interface DispatchBoardDto {
-  /** Open requests, oldest request first. */
+  /** Requests waiting for a van (REQUESTED), oldest request first. */
   openRequests: JobDto[];
+  /** Customer work already on a van (ASSIGNED or IN_PROGRESS), oldest request first. */
+  assignedWork: JobDto[];
   vans: {
     van: VanDto;
     stock: LocationStockDto;
+    /** Every job scheduled on the board's date, including completed ones, in the van's order. */
     jobsToday: JobDto[];
+    /** This van's assigned or in-progress jobs on any date: by scheduled day, then the van's order. */
+    assignedJobs: JobDto[];
   }[];
+  /** The day waiting time is counted to (London calendar day by default). */
   date: string;
 }
