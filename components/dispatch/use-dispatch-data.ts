@@ -33,6 +33,12 @@ export function useDispatchBoard(load: (signal: AbortSignal) => Promise<Dispatch
     return () => controller.abort();
   }, [load, attempt]);
 
+  useEffect(() => {
+    const refresh = () => setAttempt(n => n + 1);
+    window.addEventListener("fleet-changed", refresh);
+    return () => window.removeEventListener("fleet-changed", refresh);
+  }, []);
+
   const current = settled?.attempt === attempt ? settled : null;
   let state: BoardState;
   if (lastBoard) {

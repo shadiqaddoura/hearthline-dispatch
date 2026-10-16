@@ -50,7 +50,8 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     label: "Fleet",
     icon: bundleIcon(VehicleTruckProfileFilled, VehicleTruckProfileRegular),
     section: "Operations",
-    status: "planned",
+    status: "available",
+    href: "/fleet",
   },
   {
     value: "inventory",

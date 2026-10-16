@@ -48,7 +48,7 @@ export async function updateVan(vanId: string, input: UpdateVanRequest): Promise
       await runInTransaction((tx) => applyVanUpdate(tx, vanId, input));
       break;
     } catch (error) {
-      if (!(error instanceof LockSetChanged)) throw error;
+      if (!(error instanceof LockSetChanged)) throw fleetWriteError(error);
       if (attempt === MAX_ATTEMPTS) {
         throw new AppError("CONFLICT", "The van or technician changed while this update was being saved; try again");
       }
@@ -79,7 +79,8 @@ async function applyVanUpdate(tx: Tx, vanId: string, input: UpdateVanRequest) {
   if (plannedTechnician) await lockTechnician(tx, plannedTechnician.id);
 
   // 3. Re-read under the locks. Anything that changed since step 1 means the locks are wrong.
-  const van = (await findVan(tx, vanId))!;
+  const van = await findVan(tx, vanId);
+  if (!van) throw notFound("Van", vanId);
   const technician = changingDriver && newDriverId ? await findTechnician(tx, newDriverId) : null;
   const driverStillChanging = input.technicianId !== undefined && input.technicianId !== van.currentTechnicianId;
   if (driverStillChanging !== changingDriver || technician?.van?.id !== plannedTechnician?.van?.id) throw new LockSetChanged();
@@ -90,7 +91,7 @@ async function applyVanUpdate(tx: Tx, vanId: string, input: UpdateVanRequest) {
   const activeJobs = await countActiveJobsOnVan(tx, vanId);
   const leavingService = input.status !== undefined && input.status !== "ACTIVE" && van.status === "ACTIVE";
   if (leavingService && activeJobs > 0) {
-    throw invalidState(`${van.code} has ${activeJobs} assigned job(s); reassign them before it leaves service`);
+    throw invalidState(`${van.code} cannot leave service; reassign these jobs first: ${(await tx.job.findMany({ where: { vanId, status: { in: ["ASSIGNED", "IN_PROGRESS"] } }, select: { reference: true } })).map(j => j.reference).join(", ")}`);
   }
 
   if (driverStillChanging) {
@@ -114,11 +115,21 @@ async function applyVanUpdate(tx: Tx, vanId: string, input: UpdateVanRequest) {
     }
   }
 
-  if (input.status !== undefined || input.statusNote !== undefined) {
+  if (input.code !== undefined && input.code !== van.code && await hasImportReference(tx, van)) {
+    throw invalidState("This identifier is protected by imported source records; retain it for traceability.");
+  }
+  if (input.code !== undefined && input.code !== van.code) {
+    // Rename the label, retaining the same location ID and every physical stock row.
+    await tx.location.update({ where: { id: van.locationId }, data: { name: `Van ${input.code}` } });
+  }
+  if (input.code !== undefined || input.plate !== undefined || input.zone !== undefined || input.status !== undefined || input.statusNote !== undefined) {
     const statusChanged = input.status !== undefined && input.status !== van.status;
     await tx.van.update({
       where: { id: vanId },
       data: {
+        code: input.code,
+        plate: input.plate,
+        zone: input.zone,
         status: input.status,
         statusNote: input.statusNote,
         statusSince: statusChanged ? fromIsoDate(todayIsoDate()) : undefined,
@@ -127,7 +138,9 @@ async function applyVanUpdate(tx: Tx, vanId: string, input: UpdateVanRequest) {
   }
 
   // A van that leaves service drops its open restock job; one returning gets a fresh one.
-  await recalculateRestockForLocations(tx, [van.locationId]);
+  if (driverStillChanging || (input.status !== undefined && input.status !== van.status)) {
+    await recalculateRestockForLocations(tx, [van.locationId]);
+  }
 }
 
 function findTechnician(tx: Tx, technicianId: string) {
@@ -138,4 +151,24 @@ function findTechnician(tx: Tx, technicianId: string) {
 async function assignedJobIds(tx: Tx, vanId: string) {
   const jobs = await tx.job.findMany({ where: { vanId, status: "ASSIGNED" }, select: { id: true }, orderBy: { id: "asc" } });
   return jobs.map((job) => job.id);
+}
+
+/** Database constraints remain the final arbiter for concurrent identifier/plate writes. */
+export function fleetWriteError(error: unknown): unknown {
+  const code = (error as { code?: string })?.code;
+  if (code === "P2002") return new AppError("CONFLICT", "The vehicle identifier or registration plate is already in use.");
+  if (code === "P2003") return invalidState("This van has dependent records and cannot be deleted. Retain its history and use Sold when appropriate.");
+  return error;
+}
+
+// Imports preserve raw values rather than a direct van FK. Match trimmed leaf values
+// without case sensitivity, just as planVans normalises imported identifiers.
+export async function hasImportReference(tx: Tx, van: { code: string; plate: string | null }) {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM import_source_rows
+    WHERE EXISTS (
+      SELECT 1 FROM jsonb_path_query(raw, '$.**') AS leaf(value)
+      WHERE upper(btrim(leaf.value #>> '{}')) IN (upper(${van.code}), upper(${van.plate ?? van.code}))
+    ) LIMIT 1`;
+  return rows.length > 0;
 }
