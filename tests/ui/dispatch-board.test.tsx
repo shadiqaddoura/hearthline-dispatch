@@ -121,11 +121,24 @@ describe("DispatchBoard", () => {
     const north = vanCard("T-N");
     expect(within(north).getByText("Serials not recorded")).toBeVisible();
     await user.click(within(north).getByRole("button", { name: /Inventory & reasons/ }));
-    expect(within(north).getByText("Serials not recorded:")).toBeVisible();
-    expect(within(north).getByText(/TEST-PRN: needs 2, 1 available \(1 waiting for a serial\)/)).toBeVisible();
+    const northComparison = within(north).getByRole("table", { name: "Product comparison on T-N" });
+    const northRow = within(northComparison).getByRole("row", { name: /Test printer/ });
+    expect(
+      within(northRow)
+        .getAllByRole("cell")
+        .slice(1)
+        .map((cell) => cell.textContent),
+    ).toEqual(["2", "1", "1"]);
+    expect(within(northRow).getByText(/Unverified serials: 1/)).toBeVisible();
+    expect(within(north).queryByText(/TEST-PRN: needs/)).not.toBeInTheDocument();
     await user.click(within(vanCard("T-S")).getByRole("button", { name: /Inventory & reasons/ }));
-    expect(within(vanCard("T-S")).getByText("Not enough equipment:")).toBeVisible();
-    expect(within(vanCard("T-S")).getByText(/TEST-PRN: needs 2, 0 available/)).toBeVisible();
+    const southComparison = within(vanCard("T-S")).getByRole("table", { name: "Product comparison on T-S" });
+    expect(
+      within(within(southComparison).getByRole("row", { name: /Test printer/ }))
+        .getAllByRole("cell")
+        .slice(1)
+        .map((cell) => cell.textContent),
+    ).toEqual(["2", "0", "2"]);
   });
 
   it("keeps physical, reserved and available stock apart, and never counts broken or unverified units", async () => {

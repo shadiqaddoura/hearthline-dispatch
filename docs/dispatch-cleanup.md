@@ -49,3 +49,16 @@ The first build was prevented from opening a worker port by the execution sandbo
 | Saved schedule | — | [Saved](../output/playwright/schedule-saved.png) |
 
 This chat records the implementation decisions and checks. No AI session export has been created. Changes remain local; nothing was merged or pushed.
+
+## Follow-up: structured product shortages
+
+Expanded van details now merge product shortage explanations into the existing required-products section. Desktop uses a Fluent table with product name, secondary SKU, Needed, Available and Shortfall columns. Mobile uses product cards with the same labelled quantities. Working, reserved and broken figures stay separate; the complete van inventory remains below.
+
+The eligibility response supplies shortage quantities where present. Unverified stock is shown separately and never subtracted from the assignable shortfall. For Pizza Quarter / Mall on V04, the card reader shows **needed 2, available 0, shortfall 2, unverified 1**. This does not promise that verifying one unit covers both required units. Assigned work, which is not checked for new-work eligibility, shows “Not checked” rather than inventing a shortfall against its own reservations.
+
+Removed the semicolon-separated product paragraphs. Vehicle and driver reasons remain, as do recorded import warnings. The same comparison is used inside assignment choices, including expanded unavailable-van reasons.
+
+Verification: 29 targeted UI tests passed (board, assignment and product comparison), plus TypeScript and lint. Browser checked V04 for the selected Pizza Quarter / Mall request at 1440 × 1000 and 390 × 844. At mobile width, the page measured 390px and the drawer content 389px: no horizontal overflow. No backend code, eligibility decisions or database records changed. The preview remains available on port 3107.
+
+- [V04 desktop product comparison](../output/playwright/v04-comparison-desktop.png)
+- [V04 mobile comparison in request context](../output/playwright/v04-comparison-mobile.png)

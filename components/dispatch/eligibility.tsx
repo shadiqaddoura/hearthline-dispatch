@@ -13,7 +13,7 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { ArrowClockwiseRegular } from "@fluentui/react-icons";
-import type { StockShortageDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
+import type { VanEligibilityDto } from "@/lib/contracts/dispatch";
 import { VAN_PROBLEM_LABEL } from "@/lib/dispatch/presentation";
 import type { EligibilityState } from "./use-dispatch-data";
 
@@ -44,6 +44,10 @@ export function VanEligibilityReasons({
   vanStatus?: string;
 }) {
   const styles = useStyles();
+  // Product blockers are explained once in the structured product comparison.
+  const otherProblems = eligibility.problems.filter(
+    (problem) => problem.code !== "INSUFFICIENT_STOCK" && problem.code !== "UNITS_NEED_VERIFICATION",
+  );
   return (
     <div className={styles.reasons}>
       <div className={styles.verdict}>
@@ -62,9 +66,9 @@ export function VanEligibilityReasons({
           </Badge>
         )}
       </div>
-      {eligibility.problems.length > 0 && (
+      {otherProblems.length > 0 && (
         <ul className={styles.problems}>
-          {eligibility.problems.map((problem) => (
+          {otherProblems.map((problem) => (
             <li key={problem.code}>
               <Text size={200}>
                 <span className={styles.problemLabel}>{VAN_PROBLEM_LABEL[problem.code]}:</span>{" "}
@@ -83,19 +87,8 @@ function problemDetail(
   van: VanEligibilityDto,
   vanStatus?: string,
 ): string {
-  if (code === "INSUFFICIENT_STOCK" || code === "UNITS_NEED_VERIFICATION") return describeShortages(van.shortages);
   if (code === "VAN_NOT_ACTIVE" && vanStatus) return `${van.code} is ${vanStatus.toLowerCase()}`;
   return van.problems.find((p) => p.code === code)!.message;
-}
-
-/** "PRN-80: needs 1, 0 available (1 waiting for a serial)" for each short product. */
-export function describeShortages(shortages: StockShortageDto[]): string {
-  return shortages
-    .map((s) => {
-      const waiting = s.needsVerification > 0 ? ` (${s.needsVerification} waiting for a serial)` : "";
-      return `${s.sku}: needs ${s.required}, ${s.available} available${waiting}`;
-    })
-    .join("; ");
 }
 
 interface EligibilitySummaryProps {
