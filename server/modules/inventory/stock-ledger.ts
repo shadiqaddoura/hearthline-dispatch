@@ -41,6 +41,8 @@ export async function moveStock(tx: Tx, input: MovementInput) {
   const product = await tx.product.findUniqueOrThrow({ where: { id: input.productId } });
   const fromLocation = await trackedLocationId(tx, input.from);
   const toLocation = await trackedLocationId(tx, input.to);
+  // Before any write: a bad serial list must not reach the balances.
+  if (product.serialised) assertSerialsMatchQuantity(input, fromLocation);
 
   if (fromLocation) {
     const after = await changeBalance(tx, fromLocation, input.productId, input.condition, -input.quantity);
@@ -112,6 +114,7 @@ async function moveUnits(tx: Tx, input: MovementInput, fromLocation: string | nu
 
   if (fromLocation) {
     const units = await takeUnits(tx, fromLocation, input);
+    assertDistinctUnits(units, input);
     await tx.equipmentUnit.updateMany({ where: { id: { in: units.map((u) => u.id) } }, data: destination });
     return units.flatMap((u) => (u.serialNumber ? [u.serialNumber] : []));
   }
@@ -144,6 +147,42 @@ async function moveUnits(tx: Tx, input: MovementInput, fromLocation: string | nu
   }
 
   return input.serials ?? [];
+}
+
+/**
+ * Serials name physical units, so each may appear once, and never more than the
+ * quantity. Units leaving a van are either all named or all chosen by preference:
+ * a partial list would move fewer unit rows than the balance change.
+ */
+function assertSerialsMatchQuantity(input: MovementInput, fromLocation: string | null) {
+  const serials = input.serials ?? [];
+  const duplicates = [...new Set(serials.filter((serial, index) => serials.indexOf(serial) !== index))];
+  if (duplicates.length > 0) {
+    throw new AppError("VALIDATION_FAILED", `Serial number listed more than once: ${duplicates.join(", ")}`, {
+      duplicateSerials: duplicates,
+    });
+  }
+  const mustMatch = fromLocation !== null && serials.length > 0;
+  if (serials.length > input.quantity || (mustMatch && serials.length !== input.quantity)) {
+    throw new AppError("VALIDATION_FAILED", `${serials.length} serial number(s) given for a quantity of ${input.quantity}; give one per unit`, {
+      serials: serials.length,
+      quantity: input.quantity,
+    });
+  }
+}
+
+/** The unit rows about to move must be distinct and as many as the balance change. */
+function assertDistinctUnits(units: { id: string }[], input: MovementInput) {
+  const distinct = new Set(units.map((u) => u.id)).size;
+  // The import may move fewer rows than its quantity when a balance goes negative.
+  const countMatches = units.length === input.quantity || (input.allowNegative && units.length < input.quantity);
+  if (distinct !== units.length || !countMatches) {
+    throw new AppError("CONFLICT", "The units selected do not match the quantity being moved; nothing was changed", {
+      selectedUnits: units.length,
+      distinctUnits: distinct,
+      quantity: input.quantity,
+    });
+  }
 }
 
 function unitDestination(input: MovementInput, toLocation: string | null) {

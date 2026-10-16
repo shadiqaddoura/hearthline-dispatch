@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/prisma";
+import { runInTransaction } from "@/server/db/transaction";
+import { moveStock } from "@/server/modules/inventory/stock-ledger";
 import { assignJob } from "@/server/modules/dispatch/dispatch.service";
 import { updateVan } from "@/server/modules/fleet/fleet.service";
 import { correctStock, transferStock } from "@/server/modules/inventory/inventory.service";
@@ -60,6 +62,65 @@ describe("physical transfers", () => {
       status: "IN_STOCK",
     });
     expect(await balance(w.south.locationId, w.printer.id)).toBe(1);
+  });
+});
+
+describe("serial numbers on stock movements", () => {
+  const printers = async () =>
+    prisma.equipmentUnit.findMany({ where: { productId: w.printer.id }, orderBy: { serialNumber: "asc" } });
+
+  beforeEach(async () => {
+    await stockVan(w.north.locationId, w.printer.id, 2, { serials: ["P-1", "P-2"] });
+  });
+
+  it("rejects a serial listed twice and changes nothing", async () => {
+    const unitsBefore = await printers();
+
+    await expect(transfer(2, { productId: w.printer.id, serials: ["P-1", "P-1"] })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { duplicateSerials: ["P-1"] },
+    });
+
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
+    expect(await balance(w.south.locationId, w.printer.id)).toBe(0);
+    expect(await printers()).toEqual(unitsBefore);
+    expect(await prisma.stockMovement.count({ where: { type: "TRANSFER" } })).toBe(0);
+  });
+
+  it("moves two distinct devices", async () => {
+    const movement = await transfer(2, { productId: w.printer.id, serials: ["P-1", "P-2"] });
+
+    expect(movement.serials.sort()).toEqual(["P-1", "P-2"]);
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(0);
+    expect(await balance(w.south.locationId, w.printer.id)).toBe(2);
+    expect((await printers()).map((u) => u.locationId)).toEqual([w.south.locationId, w.south.locationId]);
+  });
+
+  it("rejects fewer serials than units leaving a van, and changes nothing", async () => {
+    await expect(transfer(2, { productId: w.printer.id, serials: ["P-1"] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
+    expect((await printers()).every((u) => u.locationId === w.north.locationId)).toBe(true);
+  });
+
+  it("protects every caller: duplicates arriving from the hub are rejected too", async () => {
+    const arrive = runInTransaction((tx) =>
+      moveStock(tx, {
+        type: "RESTOCK_COLLECTION",
+        productId: w.printer.id,
+        condition: "WORKING",
+        quantity: 2,
+        from: { locationId: w.hub.id },
+        to: { locationId: w.south.locationId },
+        serials: ["NEW-1", "NEW-1"],
+        performedBy: "Daniel",
+      }),
+    );
+
+    await expect(arrive).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await balance(w.south.locationId, w.printer.id)).toBe(0);
+    expect(await prisma.equipmentUnit.count({ where: { serialNumber: "NEW-1" } })).toBe(0);
+    expect(await prisma.stockMovement.count({ where: { type: "RESTOCK_COLLECTION" } })).toBe(0);
   });
 });
 
