@@ -44,6 +44,8 @@ describe("AppShell", () => {
     const { user } = renderWithFluent(<AppShell>content</AppShell>);
 
     expect(screen.getByText("Demo session")).toBeVisible();
+    // Phones show this shorter label instead (jsdom doesn't apply media queries).
+    expect(screen.getByText("Demo", { exact: true })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Demo session: not signed in" }));
     await user.click(await screen.findByRole("menuitem", { name: "Leave demo" }));
     expect(push).toHaveBeenCalledWith("/sign-in");

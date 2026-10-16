@@ -43,8 +43,11 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  account: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS },
-  demoBadge: { "@media (max-width: 479px)": { display: "none" } },
+  account: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, flexShrink: 0 },
+  demoBadge: { flexShrink: 0, whiteSpace: "nowrap" },
+  // Phones get the short label; the title truncates before the badge does.
+  wideLabel: { "@media (max-width: 479px)": { display: "none" } },
+  narrowLabel: { display: "none", "@media (max-width: 479px)": { display: "inline" } },
   menuNote: { display: "block", maxWidth: "240px", paddingInline: tokens.spacingHorizontalS, color: tokens.colorNeutralForeground3 },
 });
 
@@ -73,7 +76,8 @@ export function AppHeader({ title, navOpen, onToggleNav }: AppHeaderProps) {
       </Text>
       <div className={styles.account}>
         <Badge appearance="tint" color="warning" className={styles.demoBadge}>
-          Demo session
+          <span className={styles.wideLabel}>Demo session</span>
+          <span className={styles.narrowLabel}>Demo</span>
         </Badge>
         <Menu>
           <MenuTrigger disableButtonEnhancement>
