@@ -7,24 +7,61 @@ export type Tx = Prisma.TransactionClient;
 /**
  * Runs `work` in one database transaction. Anything thrown rolls back every
  * write, so an operation can never leave partial stock or reservation changes.
+ *
+ * If PostgreSQL aborts the transaction as a deadlock victim or for a serialization
+ * failure, the whole transaction is run again from the start, at most
+ * MAX_ATTEMPTS times. Nothing from the aborted attempt was committed, and `work`
+ * must not have side effects outside the database, so a retry cannot duplicate
+ * movements. This is a safety net: the lock order below is what prevents deadlocks.
  */
-export function runInTransaction<T>(work: (tx: Tx) => Promise<T>, options: { timeoutMs?: number } = {}) {
-  return prisma.$transaction(work, { timeout: options.timeoutMs ?? 15_000, maxWait: 10_000 });
+export async function runInTransaction<T>(work: (tx: Tx) => Promise<T>, options: { timeoutMs?: number } = {}): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await prisma.$transaction(work, { timeout: options.timeoutMs ?? 15_000, maxWait: 10_000 });
+    } catch (error) {
+      if (attempt >= MAX_ATTEMPTS || !isRetryableConflict(error)) throw error;
+      console.warn(`Transaction aborted by the database (${conflictCode(error)}); retrying, attempt ${attempt + 1} of ${MAX_ATTEMPTS}`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 25 + Math.random() * 25));
+    }
+  }
+}
+
+const MAX_ATTEMPTS = 3;
+
+/** PostgreSQL deadlock (40P01) or serialization failure (40001), however Prisma wraps it. */
+export function isRetryableConflict(error: unknown): boolean {
+  return conflictCode(error) !== null;
+}
+
+function conflictCode(error: unknown): string | null {
+  const e = error as { code?: string; meta?: { driverAdapterError?: { cause?: { originalCode?: string } } } } | null;
+  if (e?.code === "P2034") return "P2034";
+  const original = e?.meta?.driverAdapterError?.cause?.originalCode;
+  return original === "40P01" || original === "40001" ? original : null;
 }
 
 // ─── Locking ────────────────────────────────────────────────────────────────
 //
-// Every operation that can change availability takes row locks in one fixed order:
+// Rows that several operations can contend for are locked in one global order:
 //
-//   1. the job row(s) (if the operation is about jobs; several are taken sorted by id)
-//   2. the location rows it touches, sorted by id
+//   1. job rows (one, or several sorted by id: a driver change locks the jobs it hands over)
+//   2. van location rows, sorted by id
 //   3. the technician row (driver changes only)
-//   4. equipment unit rows named by serial, sorted (units arriving at a van)
-//   5. the open restock job of a van (only while its location is already locked)
+//   4. equipment unit rows named by serial, sorted (devices arriving at a van; never
+//      a device that is in stock in a van, which is refused before locking)
+//
+// Rows that belong to one van (its balances, its in-stock units, its restock job) are
+// only ever written while that van's location is locked, so they cannot form a cycle
+// with another transaction; they are taken after the location, in any order.
+//
+// No operation takes a lock of an earlier kind after a later one: e.g. a driver
+// change locks the jobs it will update before the vans, as assignment, reassignment,
+// completion and cancellation do. Each operation re-reads what it depends on after
+// locking, and fails or retries cleanly if it changed.
 //
 // Locking the location row serialises all stock and reservation changes for that
 // van: "check availability, then reserve" cannot interleave with another assignment,
-// transfer or correction on the same van. A fixed order prevents deadlocks.
+// transfer or correction on the same van.
 
 export async function lockJob(tx: Tx, jobId: string) {
   const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM jobs WHERE id = ${jobId} FOR UPDATE`;

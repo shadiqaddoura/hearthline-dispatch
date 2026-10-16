@@ -278,6 +278,15 @@ function assertSerialsMatchQuantity(input: MovementInput, fromLocation: string |
 async function assertArrivingUnitsValid(tx: Tx, input: MovementInput, sku: string) {
   const serials = input.serials ?? [];
   if (serials.length === 0) return;
+  // A device in stock in a van belongs to that van's lock: refuse it without waiting on
+  // its row, so this transaction never locks another van's units out of order.
+  const inVan = await tx.equipmentUnit.findFirst({ where: { serialNumber: { in: serials }, status: "IN_STOCK" } });
+  if (inVan) {
+    throw new AppError("CONFLICT", `Unit ${inVan.serialNumber} is recorded as ${UNIT_WHEREABOUTS.IN_STOCK}, so it cannot be received`, {
+      serialNumber: inVan.serialNumber,
+      status: inVan.status,
+    });
+  }
   await lockUnitsBySerial(tx, serials);
   const known = await tx.equipmentUnit.findMany({
     where: { serialNumber: { in: serials } },
