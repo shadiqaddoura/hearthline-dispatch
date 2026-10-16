@@ -37,7 +37,14 @@ export interface PlannedDestination extends DestinationBase {
 export type NavDestination = AvailableDestination | PlannedDestination;
 
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
-  { value: "dispatch", label: "Dispatch", icon: bundleIcon(MapFilled, MapRegular), section: "Operations", status: "planned" },
+  {
+    value: "dispatch",
+    label: "Dispatch",
+    icon: bundleIcon(MapFilled, MapRegular),
+    section: "Operations",
+    status: "available",
+    href: "/dispatch",
+  },
   {
     value: "fleet",
     label: "Fleet",

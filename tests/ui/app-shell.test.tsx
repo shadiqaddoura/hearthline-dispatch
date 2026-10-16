@@ -23,12 +23,15 @@ describe("AppShell", () => {
     renderWithFluent(<AppShell>content</AppShell>);
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
 
-    for (const label of ["Dispatch", "Fleet", "Inventory", "Restocking", "Imports"]) {
+    for (const label of ["Fleet", "Inventory", "Restocking", "Imports"]) {
       const item = within(nav).getByRole("button", { name: `${label} Soon` });
       expect(item).toHaveAttribute("aria-disabled", "true");
       expect(item).toHaveAccessibleDescription(/not built yet/i);
     }
-    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+    expect(within(nav).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Dispatch", "/dispatch"],
+      ["Products", "/products"],
+    ]);
   });
 
   it("collapses and reopens the sidebar from the header button", async () => {

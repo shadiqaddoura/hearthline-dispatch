@@ -2,9 +2,11 @@ import { Activity, StrictMode, act } from "react";
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { FluentProvider } from "@fluentui/react-components";
+import { DispatchBoard } from "@/components/dispatch/dispatch-board";
 import { AppShell } from "@/components/shell/app-shell";
 import { SignInScreen } from "@/components/sign-in/sign-in-screen";
 import { hearthlineLightTheme } from "@/components/theme/theme";
+import { testBoard, waitingJobEligibility } from "../support/dispatch-fixtures";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/products",
@@ -34,15 +36,26 @@ const tabsterTick = () => act(() => new Promise((resolve) => setTimeout(resolve,
 const focusManagerErrors = () =>
   consoleError.mock.calls.map((args) => String(args[0])).filter((message) => FOCUS_MANAGER_ERROR.test(message));
 
-/** Both screens, shown and hidden the way Next keeps visited routes in <Activity>. */
-function Routes({ visible }: { visible: "products" | "sign-in" }) {
+type Route = "products" | "dispatch" | "sign-in";
+const loadBoard = () => Promise.resolve(testBoard);
+const loadEligibility = () => Promise.resolve(waitingJobEligibility);
+
+/** The screens, shown and hidden the way Next keeps visited routes in <Activity>. */
+function Routes({ visible }: { visible: Route }) {
+  const mode = (route: Route) => (visible === route ? "visible" : "hidden");
   return (
     <StrictMode>
       <FluentProvider theme={hearthlineLightTheme}>
-        <Activity mode={visible === "products" ? "visible" : "hidden"}>
+        <Activity mode={mode("products")}>
           <AppShell>catalogue</AppShell>
         </Activity>
-        <Activity mode={visible === "sign-in" ? "visible" : "hidden"}>
+        <Activity mode={mode("dispatch")}>
+          {/* The board's request lists add arrow-key groups to the hidden route. */}
+          <AppShell>
+            <DispatchBoard loadBoard={loadBoard} loadEligibility={loadEligibility} />
+          </AppShell>
+        </Activity>
+        <Activity mode={mode("sign-in")}>
           <SignInScreen />
         </Activity>
       </FluentProvider>
@@ -63,10 +76,10 @@ describe("Fluent focus manager", () => {
     await tabsterTick();
 
     for (let round = 0; round < 3; round++) {
-      rerender(<Routes visible="sign-in" />);
-      await tabsterTick();
-      rerender(<Routes visible="products" />);
-      await tabsterTick();
+      for (const route of ["dispatch", "sign-in", "products"] as const) {
+        rerender(<Routes visible={route} />);
+        await tabsterTick();
+      }
     }
 
     expect(focusManagerErrors()).toEqual([]);
