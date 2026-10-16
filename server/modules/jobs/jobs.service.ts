@@ -19,6 +19,7 @@ import type {
 import type { JobStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 import { findJob, jobInclude, OPEN_STATUSES, toJobDto } from "./jobs.repository";
+import { assertSlotAvailable } from "./schedule";
 
 // Job lifecycle: REQUESTED → ASSIGNED → IN_PROGRESS → COMPLETED, or → CANCELLED.
 // Assignment and reassignment live in the dispatch module.
@@ -72,7 +73,10 @@ export async function createJob(input: CreateJobRequest): Promise<JobDto> {
   return getJob(jobId);
 }
 
-/** Manual scheduling: the planned day and the order within it. Never touches requestedOn. */
+/**
+ * Manual scheduling: the planned day and the position in the van's day. Never touches
+ * requestedOn, reservations or stock. Locks job → van location, the documented order.
+ */
 export async function scheduleJob(jobId: string, input: ScheduleJobRequest): Promise<JobDto> {
   await runInTransaction(async (tx) => {
     await lockJob(tx, jobId);
@@ -80,6 +84,14 @@ export async function scheduleJob(jobId: string, input: ScheduleJobRequest): Pro
     if (job.status !== "REQUESTED" && job.status !== "ASSIGNED") {
       throw invalidState(`A ${job.status.toLowerCase()} job cannot be rescheduled`);
     }
+    if (job.van) await lockLocations(tx, [job.van.locationId]);
+    await assertSlotAvailable(tx, {
+      jobId,
+      van: job.van,
+      scheduledFor: input.scheduledFor,
+      sequence: input.sequence,
+      currentScheduledFor: job.scheduledFor,
+    });
     await tx.job.update({
       where: { id: jobId },
       data: {

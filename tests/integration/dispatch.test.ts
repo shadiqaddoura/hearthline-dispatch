@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/prisma";
-import { assignJob, findEligibleVans, reassignJob } from "@/server/modules/dispatch/dispatch.service";
+import { assignJob, findEligibleVans, getDispatchBoard, reassignJob } from "@/server/modules/dispatch/dispatch.service";
 import { getVanStock, transferStock, verifyUnit } from "@/server/modules/inventory/inventory.service";
-import { cancelJob, createJob, getJob } from "@/server/modules/jobs/jobs.service";
+import { cancelJob, createJob, getJob, scheduleJob, startJob } from "@/server/modules/jobs/jobs.service";
 import { activeReservations, balance, createWorld, newJob, serials, stockVan, type World } from "../support/world";
 
 let w: World;
@@ -184,5 +184,36 @@ describe("reassignment", () => {
     await expect(reassignJob(job.id, { vanId: w.south.id, reason: "x", reassignedBy: "Noor" })).rejects.toMatchObject({
       code: "INSUFFICIENT_STOCK",
     });
+  });
+});
+
+describe("dispatch board", () => {
+  it("lists waiting requests and assigned work separately, counting waiting from the request date", async () => {
+    await stockVan(w.north.locationId, w.cable.id, 10);
+    const waiting = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-WAIT");
+    const later = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-LATER");
+    const first = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-FIRST");
+    const unscheduled = await newJob(w, [{ productId: w.cable.id, quantity: 1 }], "J-UNSCHEDULED");
+    await assignJob(later.id, { vanId: w.north.id, scheduledFor: "2099-10-20", sequence: 2, assignedBy: "Noor" });
+    await assignJob(first.id, { vanId: w.north.id, scheduledFor: "2099-10-18", sequence: 1, assignedBy: "Noor" });
+    await assignJob(unscheduled.id, { vanId: w.north.id, assignedBy: "Noor" });
+    await scheduleJob(first.id, { scheduledFor: "2099-10-18", sequence: 1 });
+    await startJob(first.id);
+
+    const board = await getDispatchBoard("2026-10-16");
+
+    expect(board.openRequests.map((j) => j.reference)).toEqual([waiting.reference]);
+    expect(board.assignedWork.map((j) => [j.reference, j.status]).sort()).toEqual([
+      ["J-FIRST", "IN_PROGRESS"],
+      ["J-LATER", "ASSIGNED"],
+      ["J-UNSCHEDULED", "ASSIGNED"],
+    ]);
+    // Requested 1 October: 15 days by 16 October, whatever the scheduled day.
+    expect(board.assignedWork.every((j) => j.requestedOn === "2026-10-01" && j.waitingDays === 15)).toBe(true);
+
+    const north = board.vans.find((v) => v.van.id === w.north.id)!;
+    expect(north.assignedJobs.map((j) => j.reference)).toEqual(["J-FIRST", "J-LATER", "J-UNSCHEDULED"]);
+    expect(north.stock.lines.find((l) => l.productId === w.cable.id)).toMatchObject({ working: 10, reserved: 3, available: 7 });
+    expect(board.vans.find((v) => v.van.id === w.south.id)!.assignedJobs).toEqual([]);
   });
 });

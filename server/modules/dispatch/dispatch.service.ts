@@ -16,6 +16,7 @@ import {
 } from "@/server/modules/inventory/inventory.repository";
 import { toVanDto, vanInclude } from "@/server/modules/fleet/fleet.repository";
 import { findJob, jobInclude, toJobDto, type JobRow } from "@/server/modules/jobs/jobs.repository";
+import { assertSlotAvailable } from "@/server/modules/jobs/schedule";
 import { fromIsoDate, todayIsoDate } from "@/lib/dates";
 import type { AssignJobRequest, DispatchBoardDto, ReassignJobRequest, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
@@ -79,6 +80,15 @@ export async function assignJob(jobId: string, input: AssignJobRequest): Promise
     if (job.status !== "REQUESTED") throw invalidState(`A ${job.status.toLowerCase()} job cannot be assigned`);
 
     const van = await reserveOnVan(tx, job, input.vanId);
+    // Still under the van's location lock: no other save can take this position meanwhile.
+    // A rejected slot rolls back the reservations made just above.
+    await assertSlotAvailable(tx, {
+      jobId,
+      van: { id: van.id, code: van.code },
+      scheduledFor: input.scheduledFor ?? null,
+      sequence: input.sequence ?? null,
+      currentScheduledFor: job.scheduledFor,
+    });
     await tx.job.update({
       where: { id: jobId },
       data: {
@@ -147,7 +157,7 @@ async function reserveOnVan(tx: Tx, job: JobRow, vanId: string) {
   }
 
   await createReservations(tx, job.id, found.locationId, job.items);
-  return { id: vanId, technicianId: candidate.technician.id };
+  return { id: vanId, code: found.code, technicianId: candidate.technician.id };
 }
 
 // ─── Blocking reasons ───────────────────────────────────────────────────────
@@ -227,14 +237,19 @@ async function refreshReservationShortfalls() {
 
 // ─── Dispatch board ─────────────────────────────────────────────────────────
 
-/** Every open request with how long it has waited, and every van with its stock, driver and day. */
+/**
+ * Every unfinished customer job with how long it has waited, and every van with its
+ * stock, driver, assigned jobs and day. Waiting time always counts from the request date.
+ */
 export async function getDispatchBoard(date = todayIsoDate()): Promise<DispatchBoardDto> {
   const day = fromIsoDate(date);
-  const [requests, vans, jobsOnDay] = await Promise.all([
+  const oldestRequestFirst = [{ requestedOn: { sort: "asc" as const, nulls: "last" as const } }, { reference: "asc" as const }];
+  const [requests, assigned, vans, jobsOnDay] = await Promise.all([
+    prisma.job.findMany({ where: { status: "REQUESTED" }, include: jobInclude, orderBy: oldestRequestFirst }),
     prisma.job.findMany({
-      where: { status: "REQUESTED" },
+      where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
       include: jobInclude,
-      orderBy: [{ requestedOn: { sort: "asc", nulls: "last" } }, { reference: "asc" }],
+      orderBy: oldestRequestFirst,
     }),
     prisma.van.findMany({ where: { status: { not: "SOLD" } }, include: vanInclude, orderBy: { code: "asc" } }),
     prisma.job.findMany({
@@ -244,9 +259,11 @@ export async function getDispatchBoard(date = todayIsoDate()): Promise<DispatchB
     }),
   ]);
 
+  const assignedWork = assigned.map((job) => toJobDto(job, day));
   return {
     date,
     openRequests: requests.map((job) => toJobDto(job, day)),
+    assignedWork,
     vans: await Promise.all(
       vans.map(async (van) => ({
         van: toVanDto(van),
@@ -257,7 +274,22 @@ export async function getDispatchBoard(date = todayIsoDate()): Promise<DispatchB
           lines: await buildStockLines(prisma, van.locationId),
         },
         jobsToday: jobsOnDay.filter((job) => job.vanId === van.id).map((job) => toJobDto(job, day)),
+        assignedJobs: assignedWork.filter((job) => job.van?.id === van.id).sort(byVanRunOrder),
       })),
     ),
   };
+}
+
+/** Scheduled day (unscheduled last), then the van's manual order (unordered last), then reference. */
+function byVanRunOrder(a: JobDto, b: JobDto): number {
+  return (
+    compareNullsLast(a.scheduledFor, b.scheduledFor, (x, y) => x.localeCompare(y)) ||
+    compareNullsLast(a.sequence, b.sequence, (x, y) => x - y) ||
+    a.reference.localeCompare(b.reference)
+  );
+}
+
+function compareNullsLast<T>(a: T | null, b: T | null, compare: (a: T, b: T) => number): number {
+  if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+  return compare(a, b);
 }

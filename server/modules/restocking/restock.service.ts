@@ -144,7 +144,7 @@ export async function confirmRestockCollection(restockJobId: string, input: Coll
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
 const restockInclude = {
-  van: true,
+  van: { include: { currentTechnician: true } },
   items: { include: { product: true }, orderBy: { product: { sku: "asc" } } },
   returns: { include: { product: true } },
 } as const;
@@ -166,28 +166,79 @@ export async function getRestockJob(id: string): Promise<RestockJobDto> {
 
 type RestockJobRow = Prisma.RestockJobGetPayload<{ include: typeof restockInclude }>;
 
+/**
+ * The pick list as stored (outstanding quantities come from the recalculation above),
+ * with the van's current figures beside it. Read-only: nothing here changes stock.
+ */
 async function toRestockJobDto(job: RestockJobRow): Promise<RestockJobDto> {
-  const negative = await prisma.stockBalance.findMany({
-    where: { locationId: job.van.locationId, condition: "WORKING", quantity: { lt: 0 } },
-    select: { productId: true },
-  });
-  const negativeProducts = new Set(negative.map((b) => b.productId));
+  const locationId = job.van.locationId;
+  const [balances, brokenUnits, products] = await Promise.all([
+    prisma.stockBalance.findMany({ where: { locationId } }),
+    prisma.equipmentUnit.findMany({
+      where: { locationId, condition: "BROKEN", status: "IN_STOCK", serialNumber: { not: null } },
+      select: { productId: true, serialNumber: true },
+      orderBy: { serialNumber: "asc" },
+    }),
+    prisma.product.findMany({ orderBy: { sku: "asc" } }),
+  ]);
+  const balance = (productId: string, condition: "WORKING" | "BROKEN") =>
+    balances.find((b) => b.productId === productId && b.condition === condition)?.quantity ?? 0;
+  const productById = new Map(products.map((p) => [p.id, p]));
 
   return {
     id: job.id,
-    van: { id: job.van.id, code: job.van.code },
+    van: {
+      id: job.van.id,
+      code: job.van.code,
+      status: job.van.status,
+      technician: job.van.currentTechnician
+        ? { id: job.van.currentTechnician.id, name: job.van.currentTechnician.name }
+        : null,
+    },
     status: job.status,
     closeReason: job.closeReason,
     createdAt: job.createdAt.toISOString(),
-    items: job.items.map((item) => ({
-      productId: item.productId,
-      sku: item.product.sku,
-      name: item.product.name,
-      outstanding: item.outstandingQuantity,
-      collected: item.collectedQuantity,
-      pick: toPickQuantity(item.outstandingQuantity, item.product),
-      balanceNeedsReview: negativeProducts.has(item.productId),
-    })),
+    updatedAt: job.updatedAt.toISOString(),
+    items: job.items.map((item) => {
+      const working = balance(item.productId, "WORKING");
+      return {
+        productId: item.productId,
+        sku: item.product.sku,
+        name: item.product.name,
+        outstanding: item.outstandingQuantity,
+        collected: item.collectedQuantity,
+        pick: toPickQuantity(item.outstandingQuantity, item.product),
+        vanMinimum: item.product.vanMinimum,
+        working,
+        balanceNeedsReview: working < 0,
+      };
+    }),
+    brokenAwaitingReturn: balances
+      .filter((b) => b.condition === "BROKEN" && b.quantity > 0)
+      .map((b) => {
+        const product = productById.get(b.productId)!;
+        return {
+          productId: b.productId,
+          sku: product.sku,
+          name: product.name,
+          quantity: b.quantity,
+          baseUnit: product.baseUnit,
+          serials: brokenUnits.filter((u) => u.productId === b.productId).map((u) => u.serialNumber!),
+        };
+      })
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+    policyExclusions: products
+      .filter((p) => !p.autoRestock && p.vanMinimum > 0 && balance(p.id, "WORKING") < p.vanMinimum)
+      .map((p) => ({
+        productId: p.id,
+        sku: p.sku,
+        name: p.name,
+        vanMinimum: p.vanMinimum,
+        working: balance(p.id, "WORKING"),
+        baseUnit: p.baseUnit,
+        needsReview: p.restockPolicyNeedsReview,
+        note: p.restockPolicyNote,
+      })),
     returns: job.returns.map((r) => ({
       productId: r.productId,
       sku: r.product.sku,
