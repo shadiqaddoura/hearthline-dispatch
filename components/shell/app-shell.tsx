@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { makeStyles, tokens } from "@fluentui/react-components";
+import { FocusManager } from "@/components/theme/focus-manager";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { destinationForPath } from "./navigation";
@@ -52,6 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={styles.root}>
+      <FocusManager />
       <a href={`#${MAIN_ID}`} className={styles.skipLink}>
         Skip to main content
       </a>

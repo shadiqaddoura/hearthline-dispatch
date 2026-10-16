@@ -14,6 +14,7 @@ import {
 } from "@fluentui/react-components";
 import { ArrowRightRegular } from "@fluentui/react-icons";
 import { BrandMark } from "@/components/brand/brand-mark";
+import { FocusManager } from "@/components/theme/focus-manager";
 import { previewSignIn } from "@/lib/auth/sign-in";
 import { SignInForm } from "./sign-in-form";
 
@@ -51,6 +52,7 @@ export function SignInScreen() {
 
   return (
     <div className={styles.page}>
+      <FocusManager />
       <main className={styles.main}>
         <div className={styles.brand}>
           <BrandMark size="large" />

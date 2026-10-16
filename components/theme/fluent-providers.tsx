@@ -8,16 +8,14 @@ import {
   SSRProvider,
   createDOMRenderer,
   renderToStyleElements,
-  useRestoreFocusTarget,
 } from "@fluentui/react-components";
 import { hearthlineLightTheme } from "./theme";
 
-/** Theme, styling and focus management for every page. */
+/** Theme and styling for every page. */
 export function FluentProviders({ children }: { children: ReactNode }) {
   return (
     <GriffelRegistry>
       <FluentProvider theme={hearthlineLightTheme} style={{ minHeight: "100dvh" }}>
-        <FocusRestorer />
         {children}
       </FluentProvider>
     </GriffelRegistry>
@@ -44,16 +42,4 @@ function GriffelRegistry({ children }: { children: ReactNode }) {
       <SSRProvider>{children}</SSRProvider>
     </RendererProvider>
   );
-}
-
-/**
- * Keeps Tabster's focus-restore API alive for the whole app. Panels restore
- * focus with useRestoreFocusSource/Target, which only start the API while they
- * are mounted; Next keeps visited routes in a hidden <Activity>, which stops
- * their effects but leaves their attributes in the page, and Tabster then
- * reports the API as uninitialised.
- */
-function FocusRestorer() {
-  useRestoreFocusTarget();
-  return null;
 }
