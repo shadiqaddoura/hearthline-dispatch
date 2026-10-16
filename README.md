@@ -1,6 +1,6 @@
-# Hearthline Dispatch — backend foundation
+# Hearthline Dispatch
 
-Milestone 1 of the van stock and dispatch system: database, business rules, import of the stock book, and an HTTP API. There is deliberately no UI yet.
+The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The first UI milestone (branch `feat/fluent2-ui`) adds a sign-in preview, the application shell, and a read-only Products page built with Microsoft Fluent 2. See [UI](#ui-fluent-2).
 
 ## Run it
 
@@ -12,10 +12,12 @@ cp .env.example .env
 npm run db:up                    # Postgres 17 on :5433 (dev + test databases)
 npm run db:migrate               # apply migrations
 npm run import:book -- docs/04-van-stock-book.xlsx
-npm run dev                      # API at http://localhost:3000/api
+npm run dev                      # app at http://localhost:3000, API at /api
 ```
 
-Checks: `npm test` (uses and wipes `hearthline_test`), `npm run typecheck`, `npm run lint`, `npm run build`.
+Open http://localhost:3000. It redirects to the sign-in preview; **Continue to demo** opens the Products page.
+
+Checks: `npm test` (uses and wipes `hearthline_test`), `npm run typecheck`, `npm run lint`, `npm run build`. The component tests alone need no database: `npx vitest run --project ui`.
 The import runs once into an empty database; to load it again run `npm run db:reset` first.
 
 ## Architecture
@@ -79,6 +81,40 @@ Each module has a `*.service.ts` (business rules, transactions) and, where it he
 
 192 rows preserved with sheet and row number. 78 counts used (6 superseded), 99 movements, 51 completed jobs, 16 open requests, 6 open restock jobs. Issues: 50 info, 47 warnings, 1 error (V03 PRN-K, quantity "-"). Every issue links to its original row: `GET /api/imports/{id}/issues`.
 
+## UI (Fluent 2)
+
+Built with [Fluent UI React v9](https://react.fluentui.dev) (`@fluentui/react-components` 9.74, `@fluentui/react-icons`), Microsoft's React implementation of Fluent 2. It supports React 19 (peer range `<20`).
+
+```
+app/(auth)/sign-in/page.tsx    sign-in preview
+app/(app)/layout.tsx           application shell around every signed-in screen
+app/(app)/products/page.tsx    Products
+components/theme/              the one theme (teal brand ramp → createLightTheme) and the Fluent/Next providers
+components/shell/              sidebar, header, navigation config, media-query hook
+components/sign-in/            screen + form
+components/products/           view (state), toolbar, table, details panel, loading/empty/error states, useProducts
+lib/api/                       browser fetch of our own API, unwrapping { data } / { error }
+lib/auth/sign-in.ts            form rules and the preview sign-in handler
+lib/products/catalogue.ts      search and wording rules (pure, unit-tested)
+lib/contracts/products.ts      ProductDto, shared by GET /api/products and the UI
+```
+
+Pages are server components that render one client component; Fluent is used only in client components. Business rules (`lib/`) don't import Fluent. To try another design direction, replace `components/` and the theme. The routes, `lib/` and the API stay as they are.
+
+| Question | Decision | Why |
+| --- | --- | --- |
+| Sign-in | **A preview, not authentication.** The form validates input, then always reports that sign-in isn't connected. It never checks credentials or sends them anywhere. **Continue to demo** is a plain link to `/products`. Every app page is open, and the header says "Demo session". | The app has no users or sessions. A fake sign-in would look like security. When authentication is added, it replaces `previewSignIn` and guards the `(app)` routes. |
+| Fluent with the App Router | Fluent's documented setup: a Griffel renderer whose CSS is inserted into the server HTML through `useServerInsertedHTML`, so the first paint is styled. The `fluentui-next-appdir-directive` SWC plugin from the same guide isn't used. | Fluent 9.74 already ships `'use client'` in its modules, and Fluent is only imported from client components. A wasm SWC plugin is tied to one Next version. |
+| Unfinished areas | Dispatch, Fleet, Inventory, Restocking and Imports appear in the sidebar with a "Soon" badge, as disabled (`aria-disabled`) buttons with an explanation. They aren't links. | They show the shape of the app without broken links or placeholder screens. |
+| Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
+| Restock policy display | A flagged policy shows its current setting *and* the flag ("Off · needs review"), plus the note in the details panel. | The kitchen-display decision is provisional (see above). Hiding either half would mislead. |
+| Product data | Only what `GET /api/products` returns. No demo fixtures. An empty database shows "No products yet" with how to import. | Everything shown is a real record. |
+| Focus restoration | Panels return focus to their trigger with Fluent's `useRestoreFocusSource/Target`. The restore API is kept alive at the root. | Next 16 keeps visited routes in a hidden `<Activity>`, which stops their effects but leaves Tabster attributes in the page. Tabster then reports the API as uninitialised. |
+
+The Next starter's Tailwind packages and Turbopack rule are still installed, but `globals.css` no longer imports Tailwind. Another design direction could use them; otherwise they can be removed.
+
+Known dev-only console noise: in `next dev`, Strict Mode mounts effects twice, and Tabster logs "mover API used before initialization" / "Keyborg instance … disposed incorrectly" on a cold load. Production builds don't log them.
+
 ## API
 
 | | |
@@ -92,18 +128,19 @@ Each module has a `*.service.ts` (business rules, transactions) and, where it he
 | `POST /api/units/verify` | Record a counted unit's serial |
 | `GET /api/restock-jobs`, `POST /api/restock-jobs/{id}/collect`, `POST /api/restock-jobs/recalculate` | Pick lists (with box conversion), collection, broken returns |
 | `GET/POST /api/imports`, `GET /api/imports/{id}/issues` | Import (multipart `file`) and the rows that did not fit |
-| `GET /api/products` · `customers` · `technicians` | Reference data |
+| `GET /api/products` · `customers` · `technicians` | Reference data (`ProductDto` in `lib/contracts/products.ts`) |
 
 There is no authentication yet, so write requests name their actor (`assignedBy`, `correctedBy`, …).
 
 ## Tests
 
-58 tests: 24 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling) and 34 integration tests against real Postgres. The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
+121 tests: 34 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation), 72 integration tests against real Postgres, and 15 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; shell navigation and the demo indicator). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
 
 ## Not done yet / known limits
 
-- No screens: dispatch board, restock list, technician phone view.
-- No authentication or roles.
+- Screens: only sign-in (preview) and Products. Still to build: dispatch board, fleet, inventory, restock list, imports, technician phone view.
+- No authentication or roles. The sign-in screen is a preview, and every page and API route is open.
+- Products are read-only: no editing or deletion.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
 - Completion may use a job's own reservation plus free stock, never stock reserved for another job; recording work that physically used another job's units means reassigning that job first. A lower stock count can still leave assigned jobs short: they are flagged `RESERVATION_SHORTFALL` (all jobs sharing the shortfall, since which one runs short depends on order), not cancelled or reassigned.
 - Reservations are by quantity, not by serial. There's no "unit found broken" operation; use a correction.
