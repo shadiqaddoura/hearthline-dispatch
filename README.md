@@ -1,6 +1,6 @@
 # Hearthline Dispatch
 
-The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The first UI milestone (branch `feat/fluent2-ui`) adds a sign-in preview, the application shell, and a read-only Products page built with Microsoft Fluent 2. See [UI](#ui-fluent-2).
+The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (branch `feat/fluent2-ui`, Microsoft Fluent 2) has a sign-in preview, the application shell, a read-only Dispatch board and a read-only Products page. See [UI](#ui-fluent-2).
 
 ## Run it
 
@@ -88,14 +88,18 @@ Built with [Fluent UI React v9](https://react.fluentui.dev) (`@fluentui/react-co
 ```
 app/(auth)/sign-in/page.tsx    sign-in preview
 app/(app)/layout.tsx           application shell around every signed-in screen
+app/(app)/dispatch/page.tsx    Dispatch board
 app/(app)/products/page.tsx    Products
 components/theme/              the one theme (teal brand ramp → createLightTheme) and the Fluent/Next providers
 components/shell/              sidebar, header, navigation config, media-query hook
 components/sign-in/            screen + form
+components/dispatch/           board (layout and selection), request list and details, van list and card, stock summary,
+                               eligibility explanation, loading/error states, data hooks
 components/products/           view (state), toolbar, table, details panel, loading/empty/error states, useProducts
 lib/api/                       browser fetch of our own API, unwrapping { data } / { error }
 lib/auth/sign-in.ts            form rules and the preview sign-in handler
 lib/products/catalogue.ts      search and wording rules (pure, unit-tested)
+lib/dispatch/presentation.ts   labels, dates and waiting-time states (pure, unit-tested)
 lib/contracts/products.ts      ProductDto, shared by GET /api/products and the UI
 ```
 
@@ -105,10 +109,15 @@ Pages are server components that render one client component; Fluent is used onl
 | --- | --- | --- |
 | Sign-in | **A preview, not authentication.** The form validates input, then always reports that sign-in isn't connected. It never checks credentials or sends them anywhere. **Continue to demo** is a plain link to `/products`. Every app page is open, and the header says "Demo session". | The app has no users or sessions. A fake sign-in would look like security. When authentication is added, it replaces `previewSignIn` and guards the `(app)` routes. |
 | Fluent with the App Router | Fluent's documented setup: a Griffel renderer whose CSS is inserted into the server HTML through `useServerInsertedHTML`, so the first paint is styled. The `fluentui-next-appdir-directive` SWC plugin from the same guide isn't used. | Fluent 9.74 already ships `'use client'` in its modules, and Fluent is only imported from client components. A wasm SWC plugin is tied to one Next version. |
-| Unfinished areas | Dispatch, Fleet, Inventory, Restocking and Imports appear in the sidebar with a "Soon" badge, as disabled (`aria-disabled`) buttons with an explanation. They aren't links. | They show the shape of the app without broken links or placeholder screens. |
+| Unfinished areas | Fleet, Inventory, Restocking and Imports appear in the sidebar with a "Soon" badge, as disabled (`aria-disabled`) buttons with an explanation. They aren't links. | They show the shape of the app without broken links or placeholder screens. |
 | Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
 | Restock policy display | A flagged policy shows its current setting *and* the flag ("Off · needs review"), plus the note in the details panel. | The kitchen-display decision is provisional (see above). Hiding either half would mislead. |
 | Product data | Only what `GET /api/products` returns. No demo fixtures. An empty database shows "No products yet" with how to import. | Everything shown is a real record. |
+| Dispatch board scope | Read-only. It shows requests waiting for a van, customer work already on a van (assigned or in progress), and every van that isn't sold. There are no assignment or scheduling controls, not even disabled ones. | Assignment and scheduling are the next task. |
+| Eligibility on the board | Selecting a waiting request calls `GET /api/jobs/{id}/eligible-vans`. Vans are shown in the backend's ranking (eligible, then the job's zone), and each van lists the backend's reasons and shortage figures. The UI doesn't compute eligibility or shortages itself. Assigned work shows its van and schedule instead. | One source of truth for the rules. For assigned work, the job's own reservation would make its van look short, so that check belongs with reassignment. |
+| Waiting time | Shown from the API's `requestedOn` and `waitingDays`, as calendar days up to the board date. It is never taken from the scheduled date. A missing or unreadable request date, or one after the board date (two imported requests), is labelled as such instead of showing a number. | Waiting means how long the customer has waited since asking, whatever has been scheduled since. There are no working-day or holiday rules in the system, so the board shows no service-deadline or overdue indicator; the next-working-day promise isn't measured yet (see below). |
+| Board stock | Per van: Working (physical), Reserved, Available, with broken units, units waiting for a serial and counts below zero noted beside the product. | Figures come from the API, where "available" already excludes broken, unverified and reserved stock. |
+| Board layout | Desktop: requests and vans side by side, each panel scrolling on its own, with the selected request's details above the vans. Below 1024px: Requests/Vans tabs, and a request opens its details in a drawer with "Show vans for this job". Request lists use Fluent arrow-key navigation and toggle buttons (`aria-pressed`). | The selected request stays in view on a long list. |
 | Focus manager (Tabster) | Each top-level screen renders `components/theme/focus-manager.tsx`, which starts every part of Tabster that Fluent uses (arrow keys, focus groups, modal trapping and restoration, observed elements). It isn't in the root layout. Panels return focus to their trigger with `useRestoreFocusSource/Target`. | Next keeps visited routes in a hidden `<Activity>`. Their effects stop, but their focus attributes stay in the page, so Tabster can restart without the parts those attributes need. Starting Tabster in the root layout instead makes it touch the shell before React hydrates it, which breaks hydration. |
 | Keyborg version | `package.json` `overrides` gives `@fluentui/react-tabster` Keyborg 3.498.0, the version Tabster 8.8.1 already uses. Remove it once a Fluent release depends on Keyborg 3. | Fluent 9.74.9 asks for Keyborg 2 while its Tabster asks for Keyborg 3. The two copies number their instances separately and register them in one shared window registry, so both create a `k1` and disposing one tears down the other ("Keyborg instance k1 is being disposed incorrectly"). Fluent only uses the parts of Keyborg that version 3 keeps unchanged. |
 
@@ -120,7 +129,7 @@ The only expected development console message is a hydration warning when a brow
 
 | | |
 | --- | --- |
-| `GET /api/dispatch/board?date=` | Open requests with days waited; each van's stock, driver and jobs that day |
+| `GET /api/dispatch/board?date=` | Requests waiting for a van, assigned and in-progress work (`assignedWork`), each with days waited; each van's stock, driver, open assigned jobs in run order (`assignedJobs`) and jobs that day |
 | `GET/POST /api/jobs`, `GET /api/jobs/{id}` | List (`?status`, `?open=true`), create, read |
 | `GET /api/jobs/{id}/eligible-vans` | Vans ranked: eligible → same zone, with reasons |
 | `POST /api/jobs/{id}/assign` · `reassign` · `start` · `cancel` · `complete`; `PATCH …/schedule` | Lifecycle |
@@ -135,11 +144,11 @@ There is no authentication yet, so write requests name their actor (`assignedBy`
 
 ## Tests
 
-123 tests: 34 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation), 72 integration tests against real Postgres, and 17 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
+144 tests: 43 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation, dispatch waiting time and dates), 73 integration tests against real Postgres, and 28 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; dispatch request selection, eligibility explanations, no eligible van, missing dates, stale eligibility answers, loading, empty and error states; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
 
 ## Not done yet / known limits
 
-- Screens: only sign-in (preview) and Products. Still to build: dispatch board, fleet, inventory, restock list, imports, technician phone view.
+- Screens: sign-in (preview), Dispatch board (read-only) and Products. Still to build: assignment and scheduling on the board, fleet, inventory, restock list, imports, technician phone view.
 - No authentication or roles. The sign-in screen is a preview, and every page and API route is open.
 - Products are read-only: no editing or deletion.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
