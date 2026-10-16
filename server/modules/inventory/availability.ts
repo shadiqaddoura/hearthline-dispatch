@@ -23,6 +23,11 @@ export function availableQuantity(serialised: boolean, figures: StockFigures): n
   return Math.max(0, assignableQuantity(serialised, figures) - figures.reserved);
 }
 
+/** Reserved quantity that assignable stock no longer covers (0 when every reservation is backed). */
+export function reservationShortfall(serialised: boolean, figures: StockFigures): number {
+  return Math.max(0, figures.reserved - assignableQuantity(serialised, figures));
+}
+
 /** Serialised products: units counted but not assignable until a serial is recorded. */
 export function needsVerificationQuantity(serialised: boolean, figures: StockFigures): number | null {
   if (!serialised) return null;

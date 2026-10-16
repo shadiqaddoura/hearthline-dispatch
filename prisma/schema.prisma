@@ -314,6 +314,7 @@ enum BlockingReason {
   NO_ELIGIBLE_VAN // no active, driven van has enough eligible stock
   UNITS_NEED_VERIFICATION // stock exists but serials are unverified
   IMPORT_NEEDS_REVIEW // imported with an unclear status or incomplete data
+  RESERVATION_SHORTFALL // assigned, but the van no longer holds enough stock for its reservations
 }
 
 model Job {

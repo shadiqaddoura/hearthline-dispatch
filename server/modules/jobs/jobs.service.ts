@@ -1,8 +1,9 @@
 import "server-only";
 import { prisma } from "@/server/db/prisma";
-import { lockJob, lockLocations, runInTransaction } from "@/server/db/transaction";
+import { lockJob, lockLocations, runInTransaction, type Tx } from "@/server/db/transaction";
 import { AppError, invalidState, notFound } from "@/server/http/errors";
-import { closeActiveReservations } from "@/server/modules/inventory/inventory.repository";
+import { reservationShortfall } from "@/server/modules/inventory/availability";
+import { closeActiveReservations, loadStockFigures } from "@/server/modules/inventory/inventory.repository";
 import { moveStock } from "@/server/modules/inventory/stock-ledger";
 import { recalculateRestockForLocations } from "@/server/modules/restocking/restock.service";
 import { refreshBlockingReasons } from "@/server/modules/dispatch/dispatch.service";
@@ -132,6 +133,11 @@ export async function cancelJob(jobId: string, input: CancelJobRequest): Promise
  *   - the job's reservations are consumed,
  *   - the van's restock list is recalculated.
  *
+ * Usage may exceed this job's reservation only from free stock: if what was delivered
+ * would leave another assigned job's reservation uncovered, completion is refused and
+ * nothing changes. For serialised products the check runs on the units actually
+ * taken, so naming the installed serials matters.
+ *
  * Safe to retry: the job row is locked first, and a job that is already COMPLETED
  * returns `alreadyCompleted: true` without touching stock. JobCompletion.jobId is
  * unique as a second line of defence.
@@ -149,6 +155,9 @@ export async function completeJob(jobId: string, input: CompleteJobRequest): Pro
     const van = { locationId: job.van.locationId };
     const branch = { branchId: job.branchId };
     await lockLocations(tx, [van.locationId]);
+    const deliveredProducts = [...new Set(input.delivered.map((line) => line.productId))];
+    // Measured while this job's own reservations still count, so its own share is allowed.
+    const shortfallBefore = await reservationShortfalls(tx, van.locationId, deliveredProducts);
     await closeActiveReservations(tx, jobId, "CONSUMED", "Job completed");
 
     const lines = [];
@@ -182,6 +191,8 @@ export async function completeJob(jobId: string, input: CompleteJobRequest): Pro
       lines.push({ productId: line.productId, kind: "COLLECTED_BROKEN" as const, quantity: line.quantity, serials: movement.serials });
     }
 
+    await assertOtherReservationsKept(tx, job.reference, job.van.code, van.locationId, shortfallBefore);
+
     await tx.jobCompletion.create({
       data: { jobId, completedBy: input.completedBy, note: input.note, lines: { create: lines } },
     });
@@ -195,6 +206,42 @@ export async function completeJob(jobId: string, input: CompleteJobRequest): Pro
 
   if (!alreadyCompleted) await refreshBlockingReasons();
   return { job: await getJob(jobId), alreadyCompleted };
+}
+
+/** Per product: reserved quantity at the location that assignable stock does not cover. */
+async function reservationShortfalls(tx: Tx, locationId: string, productIds: string[]) {
+  const products = await tx.product.findMany({ where: { id: { in: productIds } } });
+  const figures = await loadStockFigures(tx, [locationId]);
+  return new Map(products.map((p) => [p.id, { sku: p.sku, shortfall: reservationShortfall(p.serialised, figures.get(locationId, p.id)) }]));
+}
+
+/**
+ * After this job's stock has left, the other jobs' reservations must be as well covered
+ * as before. Called inside the completion transaction: throwing rolls everything back.
+ */
+async function assertOtherReservationsKept(
+  tx: Tx,
+  reference: string,
+  vanCode: string,
+  locationId: string,
+  before: Map<string, { sku: string; shortfall: number }>,
+) {
+  const after = await reservationShortfalls(tx, locationId, [...before.keys()]);
+  for (const [productId, { sku, shortfall }] of after) {
+    const added = shortfall - (before.get(productId)?.shortfall ?? 0);
+    if (added <= 0) continue;
+    const others = await tx.reservation.findMany({
+      where: { locationId, productId, status: "ACTIVE" },
+      include: { job: { select: { reference: true } } },
+    });
+    const references = [...new Set(others.map((r) => r.job.reference))];
+    throw new AppError(
+      "INSUFFICIENT_STOCK",
+      `Completing ${reference} as recorded would use ${added} ${sku} on ${vanCode} reserved for ${references.join(", ")}. ` +
+        "Record only what this job used (for serialised items, name the serials installed), or reassign the other job first.",
+      { productId, sku, shortBy: added, reservedFor: references },
+    );
+  }
 }
 
 function generateReference() {

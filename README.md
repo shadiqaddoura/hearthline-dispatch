@@ -56,7 +56,7 @@ Each module has a `*.service.ts` (business rules, transactions) and, where it he
 
 **Concurrency.** Every operation that affects availability locks rows in a fixed order: job → van locations (sorted by id) → restock job. "Check availability, then reserve" therefore runs one transaction at a time per van, and reassignments in opposite directions cannot deadlock. The concurrency tests fail if the location lock is removed (checked). Completion locks the job first; a completed job returns `alreadyCompleted: true` and touches nothing. `JobCompletion.jobId` is also unique as a backstop.
 
-**Blocking reasons** (`NO_ELIGIBLE_VAN`, `UNITS_NEED_VERIFICATION`, `IMPORT_NEEDS_REVIEW`) are separate from job status. Open requests are re-evaluated after every stock or reservation change. This runs after the change commits, in its own transaction, so it can neither deadlock with nor roll back the operation. Dispatch stays manual: nothing is auto-assigned.
+**Blocking reasons** (`NO_ELIGIBLE_VAN`, `UNITS_NEED_VERIFICATION`, `IMPORT_NEEDS_REVIEW`, and `RESERVATION_SHORTFALL` for assigned jobs whose van no longer covers their reservations) are separate from job status. Open requests and assigned jobs are re-evaluated after every stock or reservation change. This runs after the change commits, in its own transaction, so it can neither deadlock with nor roll back the operation. Dispatch stays manual: nothing is auto-assigned.
 
 ## Decisions where the material disagreed or was silent
 
@@ -105,7 +105,7 @@ There is no authentication yet, so write requests name their actor (`assignedBy`
 - No screens: dispatch board, restock list, technician phone view.
 - No authentication or roles.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
-- Completion refuses only negative stock. If a technician installs units reserved for another job, that job's shortfall isn't flagged yet.
+- Completion may use a job's own reservation plus free stock, never stock reserved for another job; recording work that physically used another job's units means reassigning that job first. A lower stock count can still leave assigned jobs short: they are flagged `RESERVATION_SHORTFALL` (all jobs sharing the shortfall, since which one runs short depends on order), not cancelled or reassigned.
 - Reservations are by quantity, not by serial. There's no "unit found broken" operation; use a correction.
 - Hub shelves aren't counted, and the next-working-day promise isn't measured yet (`requestedOn`, `scheduledFor` and `completedOn` are stored for it).
 - The import is one-shot into an empty database. Serials on multi-product job rows stay on the source row, because the sheet doesn't say which serial belongs to which product.

@@ -2,7 +2,12 @@ import "server-only";
 import { prisma } from "@/server/db/prisma";
 import { lockJob, lockLocations, runInTransaction, type Tx } from "@/server/db/transaction";
 import { AppError, invalidState, notFound } from "@/server/http/errors";
-import { availableQuantity, needsVerificationQuantity } from "@/server/modules/inventory/availability";
+import {
+  assignableQuantity,
+  availableQuantity,
+  needsVerificationQuantity,
+  reservationShortfall,
+} from "@/server/modules/inventory/availability";
 import {
   buildStockLines,
   closeActiveReservations,
@@ -149,8 +154,9 @@ async function reserveOnVan(tx: Tx, job: JobRow, vanId: string) {
 
 /**
  * Recomputes the blocking reason of every open request from current availability:
- * set when no van can take it, cleared when one can. Jobs held for import review
- * keep their reason until a person deals with them.
+ * set when no van can take it, cleared when one can. Then flags assigned jobs whose
+ * reservations are no longer covered (see refreshReservationShortfalls). Jobs held
+ * for import review keep their reason until a person deals with them.
  *
  * Runs after the stock or reservation change has committed, in its own short
  * transaction, so it can never deadlock with or roll back the operation itself.
@@ -165,8 +171,7 @@ export async function refreshBlockingReasons(): Promise<void> {
       },
       include: jobInclude,
     });
-    if (jobs.length === 0) return;
-    const vans = await loadCandidates(prisma);
+    const vans = jobs.length > 0 ? await loadCandidates(prisma) : [];
 
     for (const job of jobs) {
       const decision = decideBlocking(vans.map((van) => evaluateVan(toEligibilityJob(job), van)));
@@ -178,9 +183,45 @@ export async function refreshBlockingReasons(): Promise<void> {
         data: { blockingReason: reason, blockingDetail: detail },
       });
     }
+
+    await refreshReservationShortfalls();
   } catch (error) {
     // Advisory data: a failure here must not fail the operation that already committed.
     console.error("Could not refresh blocking reasons", error);
+  }
+}
+
+/**
+ * Flags assigned or in-progress jobs whose van no longer holds enough assignable stock
+ * for the reservations on it (a lower stock count can do this), and clears the flag
+ * once covered again. Jobs are never cancelled or reassigned here. When reservations
+ * on one product share a shortfall, every job holding them is flagged: which one will
+ * actually go short depends on which is done first.
+ */
+async function refreshReservationShortfalls() {
+  const jobs = await prisma.job.findMany({
+    where: {
+      status: { in: ["ASSIGNED", "IN_PROGRESS"] },
+      OR: [{ blockingReason: null }, { blockingReason: "RESERVATION_SHORTFALL" }],
+    },
+    include: { van: true, reservations: { where: { status: "ACTIVE" }, include: { product: true } } },
+  });
+  if (jobs.length === 0) return;
+  const figures = await loadStockFigures(prisma, [...new Set(jobs.flatMap((j) => j.reservations.map((r) => r.locationId)))]);
+
+  for (const job of jobs) {
+    const short = job.reservations.flatMap((r) => {
+      const f = figures.get(r.locationId, r.productId);
+      if (reservationShortfall(r.product.serialised, f) === 0) return [];
+      return [`${r.product.sku}: ${f.reserved} reserved, ${assignableQuantity(r.product.serialised, f)} on hand`];
+    });
+    const reason = short.length > 0 ? ("RESERVATION_SHORTFALL" as const) : null;
+    const detail = short.length > 0 ? `${job.van?.code ?? "Van"} is short for its assigned jobs (${short.join("; ")}). Recount, restock or reassign.` : null;
+    if (reason === job.blockingReason && detail === job.blockingDetail) continue;
+    await prisma.job.updateMany({
+      where: { id: job.id, status: { in: ["ASSIGNED", "IN_PROGRESS"] }, blockingReason: job.blockingReason },
+      data: { blockingReason: reason, blockingDetail: detail },
+    });
   }
 }
 
