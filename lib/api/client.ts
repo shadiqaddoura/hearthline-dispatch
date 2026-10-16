@@ -36,6 +36,11 @@ export function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknow
   return request<T>(path, { method, body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
 }
 
+/** DELETEs an API path and unwraps the response like getJson. */
+export function deleteJson<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   let response: Response;
   try {
