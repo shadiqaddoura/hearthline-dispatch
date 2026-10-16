@@ -23,7 +23,7 @@ describe("AppShell", () => {
     renderWithFluent(<AppShell>content</AppShell>);
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
 
-    for (const label of ["Fleet", "Inventory", "Restocking", "Imports"]) {
+    for (const label of ["Fleet", "Inventory", "Imports"]) {
       const item = within(nav).getByRole("button", { name: `${label} Soon` });
       expect(item).toHaveAttribute("aria-disabled", "true");
       expect(item).toHaveAccessibleDescription(/not built yet/i);
@@ -31,6 +31,7 @@ describe("AppShell", () => {
     expect(within(nav).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
       ["Dispatch", "/dispatch"],
       ["Products", "/products"],
+      ["Restocking", "/restocking"],
     ]);
   });
 

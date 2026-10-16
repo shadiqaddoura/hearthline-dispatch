@@ -72,7 +72,8 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     label: "Restocking",
     icon: bundleIcon(ArrowSyncFilled, ArrowSyncRegular),
     section: "Stock",
-    status: "planned",
+    status: "available",
+    href: "/restocking",
   },
   {
     value: "imports",
