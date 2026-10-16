@@ -105,3 +105,61 @@ describe("restock jobs", () => {
     expect(await getJob(job.id)).toMatchObject({ status: "REQUESTED", blockingReason: null, requestedOn: "2026-10-05" });
   });
 });
+
+describe("pick-list details", () => {
+  it("shows each item's minimum and working stock beside the backend's outstanding quantity", async () => {
+    const [list] = await openListFor("V-N");
+
+    expect(list.van).toMatchObject({ code: "V-N", status: "ACTIVE", technician: { name: "Nadia" } });
+    expect(list.items.find((i) => i.sku === "CBL-ETH")).toMatchObject({ vanMinimum: 10, working: 4, outstanding: 6, collected: 0 });
+    expect(list.items.find((i) => i.sku === "PAP-80")).toMatchObject({
+      vanMinimum: 100,
+      working: 35,
+      outstanding: 65,
+      pick: { quantity: 65, baseUnit: "roll", packUnit: "box", packSize: 50, fullPacks: 1, looseUnits: 15 },
+    });
+  });
+
+  it("lists broken units awaiting return apart from working stock to collect", async () => {
+    const [list] = await openListFor("V-N");
+
+    expect(list.brokenAwaitingReturn).toEqual([
+      { productId: w.printer.id, sku: "PRN-80", name: "Receipt printer", quantity: 1, baseUnit: "each", serials: ["DEAD-1"] },
+    ]);
+    expect(list.items.some((i) => i.sku === "PRN-80")).toBe(false); // the dead printer isn't netted into collection
+  });
+
+  it("keeps reservations out of the restock quantity", async () => {
+    const job = await createJob({ type: "DELIVERY", branchId: w.branch.id, requestedOn: "2026-10-02", items: [{ productId: w.cable.id, quantity: 3 }] });
+    await prisma.reservation.create({ data: { jobId: job.id, locationId: w.north.locationId, productId: w.cable.id, quantity: 3 } });
+    await recalculateAllRestockJobs();
+
+    const [list] = await openListFor("V-N");
+    expect(list.items.find((i) => i.sku === "CBL-ETH")).toMatchObject({ working: 4, outstanding: 6 });
+  });
+
+  it("names products the policy keeps off the list, with the review flag, instead of adding them", async () => {
+    const [list] = await openListFor("V-N"); // the van carries no kitchen displays (minimum 1, restocking off)
+
+    expect(list.items.some((i) => i.sku === "KDS-15")).toBe(false);
+    expect(list.policyExclusions).toEqual([
+      expect.objectContaining({ sku: "KDS-15", vanMinimum: 1, working: 0, baseUnit: "each", needsReview: true }),
+    ]);
+    expect(await prisma.product.findUnique({ where: { id: w.display.id } })).toMatchObject({ autoRestock: false });
+  });
+
+  it("never creates jobs or changes stock when the list is read", async () => {
+    const before = {
+      jobs: await prisma.restockJob.count(),
+      movements: await prisma.stockMovement.count(),
+      balances: await prisma.stockBalance.findMany({ orderBy: [{ locationId: "asc" }, { productId: "asc" }, { condition: "asc" }] }),
+    };
+
+    await listRestockJobs({ status: "OPEN" });
+    await listRestockJobs({ status: "OPEN" });
+
+    expect(await prisma.restockJob.count()).toBe(before.jobs);
+    expect(await prisma.stockMovement.count()).toBe(before.movements);
+    expect(await prisma.stockBalance.findMany({ orderBy: [{ locationId: "asc" }, { productId: "asc" }, { condition: "asc" }] })).toEqual(before.balances);
+  });
+});
