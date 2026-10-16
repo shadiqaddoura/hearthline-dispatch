@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Button,
   DrawerBody,
+  DrawerFooter,
   DrawerHeader,
   DrawerHeaderTitle,
   MessageBar,
@@ -21,7 +22,7 @@ import { ArrowClockwiseRegular, DismissRegular, VehicleTruckProfileRegular } fro
 import { useMediaQuery } from "@/components/shell/use-media-query";
 import type { DispatchBoardDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
-import { formatDay, isIsoDay } from "@/lib/dispatch/presentation";
+import { JOB_TYPE_LABEL, describeWaitingTime, formatDay, isIsoDay, waitingLabel } from "@/lib/dispatch/presentation";
 import { useJobActions } from "./assignment/use-job-actions";
 import { BoardError, BoardLoading } from "./board-states";
 import { EligibilitySummary } from "./eligibility";
@@ -30,38 +31,39 @@ import { RequestList } from "./request-list";
 import { useDispatchBoard, useEligibility } from "./use-dispatch-data";
 import { VanList } from "./van-list";
 
-/** Below this width the board shows one panel at a time. */
 export const NARROW_BOARD_QUERY = "(max-width: 1023px)";
 
 const useStyles = makeStyles({
-  page: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalL },
-  intro: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: tokens.spacingHorizontalM },
-  description: { color: tokens.colorNeutralForeground2, maxWidth: "720px" },
-  // Each panel scrolls on its own, so the selected request's details stay in view.
+  page: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  toolbar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.spacingHorizontalM,
+  },
   columns: {
     display: "grid",
-    gridTemplateColumns: "minmax(300px, 2fr) minmax(0, 3fr)",
-    gap: tokens.spacingHorizontalXL,
-    height: "calc(100dvh - 210px)",
+    gridTemplateColumns: "minmax(300px, 1fr) minmax(0, 2fr)",
+    gap: tokens.spacingHorizontalL,
+    height: "calc(100dvh - 170px)",
     minHeight: "480px",
   },
-  scroller: {
-    overflowY: "auto",
-    minHeight: 0,
-    // Room for focus outlines, which the scroll container would otherwise clip.
-    padding: tokens.spacingHorizontalXS,
-  },
+  scroller: { overflowY: "auto", minHeight: 0, padding: tokens.spacingHorizontalXS },
   panel: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM, minWidth: 0 },
   panelTitle: { margin: 0 },
   surface: {
-    padding: tokens.spacingHorizontalL,
+    padding: tokens.spacingHorizontalM,
     backgroundColor: tokens.colorNeutralBackground1,
     borderRadius: tokens.borderRadiusLarge,
     boxShadow: tokens.shadow2,
   },
   hint: { color: tokens.colorNeutralForeground3 },
-  // Clears the sticky app header when scrolled into view.
-  vansSummary: { scrollMarginTop: "72px" },
+  context: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
+  footer: {
+    borderTop: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
   visuallyHidden: {
     position: "absolute",
     width: "1px",
@@ -74,66 +76,45 @@ const useStyles = makeStyles({
 });
 
 interface DispatchBoardProps {
-  /** Replace the API calls; tests use these. */
   loadBoard?: (signal: AbortSignal) => Promise<DispatchBoardDto>;
   loadEligibility?: (jobId: string, signal: AbortSignal) => Promise<VanEligibilityDto[]>;
 }
 
-/** Read-only dispatch board: unfinished customer work beside every van. */
 export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps) {
   const styles = useStyles();
   const { state, reload } = useDispatchBoard(loadBoard);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"requests" | "vans">("requests");
+  const [workspaceTab, setWorkspaceTab] = useState<"details" | "choices">("details");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const narrow = useMediaQuery(NARROW_BOARD_QUERY) ?? false;
   const detailsPanelRef = useRef<HTMLDivElement>(null);
-  // "Show vans" on phones: the request that opened the drawer is no longer on screen,
-  // so focus moves to the vans summary once the drawer has closed.
-  const vansSummaryRef = useRef<HTMLDivElement>(null);
-  const focusVansPending = useRef(false);
-  useEffect(() => {
-    if (!focusVansPending.current || detailsOpen || tab !== "vans") return;
-    focusVansPending.current = false;
-    vansSummaryRef.current?.focus();
-    vansSummaryRef.current?.scrollIntoView?.({ block: "start" });
-  }, [detailsOpen, tab]);
   const restoreFocusSource = useRestoreFocusSource();
-
   const board = state.status === "ready" ? state.board : null;
-  // A refreshed board that no longer has the job simply clears the selection.
-  const selectedJob = board ? [...board.openRequests, ...board.assignedWork].find((j) => j.id === selectedId) ?? null : null;
-  // Eligibility is for placing a waiting request; assigned work already has its van.
+  const selectedJob = board
+    ? ([...board.openRequests, ...board.assignedWork].find((j) => j.id === selectedId) ?? null)
+    : null;
   const { state: eligibility, retry: retryEligibility } = useEligibility(
     selectedJob?.status === "REQUESTED" ? selectedJob.id : null,
     loadEligibility,
   );
   const ranking = eligibility.status === "ready" ? eligibility.vans : null;
-  const jobActions = useJobActions({
-    board,
-    job: selectedJob,
-    eligibility,
-    retryEligibility,
-    reloadBoard: reload,
-  });
-  // On phones the confirmation appears inside the open details drawer, where focus is.
-  const noticeInDrawer = narrow && detailsOpen;
-
+  const jobActions = useJobActions({ board, job: selectedJob, eligibility, retryEligibility, reloadBoard: reload });
+  const noticeInDrawer = narrow && detailsOpen && selectedJob !== null;
   const select = (job: JobDto) => {
     setSelectedId(job.id);
+    setWorkspaceTab("details");
     if (narrow) setDetailsOpen(true);
     else detailsPanelRef.current?.scrollTo?.({ top: 0 });
   };
-
   const boardDay = board && isIsoDay(board.date) ? formatDay(board.date) : board?.date;
 
   return (
     <div className={styles.page}>
-      <div className={styles.intro}>
-        <Text as="p" className={styles.description}>
-          Unfinished customer work beside every van. Waiting time counts calendar days from each request date
-          {boardDay ? ` to ${boardDay}` : ""}. Assign a waiting request to a van, or change an assigned job&apos;s day
-          and position.
+      <div className={styles.toolbar}>
+        <Text size={200}>
+          {boardDay ?? "Dispatch board"}
+          {board ? ` · ${board.openRequests.length} waiting · ${board.assignedWork.length} assigned / in progress` : ""}
         </Text>
         <Button
           icon={<ArrowClockwiseRegular />}
@@ -143,11 +124,9 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
           {state.status === "ready" && state.refreshing ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
-
       <span className={styles.visuallyHidden} aria-live="polite">
         {selectedJob ? `Selected ${selectedJob.reference}, ${selectedJob.customer.name}` : ""}
       </span>
-
       {!noticeInDrawer && jobActions.notice}
       {state.status === "loading" && <BoardLoading />}
       {state.status === "error" && <BoardError message={state.message} onRetry={reload} />}
@@ -156,7 +135,6 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
           <MessageBarBody>Couldn&apos;t refresh: {state.refreshError} Showing the board from before.</MessageBarBody>
         </MessageBar>
       )}
-
       {board && narrow && (
         <>
           <TabList selectedValue={tab} onTabSelect={(_, data) => setTab(data.value as "requests" | "vans")}>
@@ -164,91 +142,131 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
               Requests ({board.openRequests.length + board.assignedWork.length})
             </Tab>
             <Tab value="vans" id="tab-vans" icon={<VehicleTruckProfileRegular />}>
-              Vans ({board.vans.length})
+              Fleet ({board.vans.length})
             </Tab>
           </TabList>
-          {tab === "requests" ? (
-            <div role="tabpanel" aria-labelledby="tab-requests" className={styles.panel}>
+          <div
+            role="tabpanel"
+            aria-labelledby={tab === "requests" ? "tab-requests" : "tab-vans"}
+            className={styles.panel}
+          >
+            {tab === "requests" ? (
               <RequestList
                 awaiting={board.openRequests}
                 assigned={board.assignedWork}
                 selectedId={selectedId}
                 onSelect={select}
               />
-            </div>
-          ) : (
-            <div role="tabpanel" aria-labelledby="tab-vans" className={styles.panel}>
-              {selectedJob ? (
-                <div ref={vansSummaryRef} tabIndex={-1} className={mergeClasses(styles.surface, styles.vansSummary)}>
-                  <Text weight="semibold">
-                    For {selectedJob.reference} ({selectedJob.customer.name})
-                  </Text>
-                  {selectedJob.status === "REQUESTED" && <EligibilitySummary state={eligibility} onRetry={retryEligibility} />}
-                </div>
-              ) : (
-                <Text className={styles.hint}>Select a request to see which vans can take it.</Text>
-              )}
-              <VanList vans={board.vans} boardDate={board.date} selectedJob={selectedJob} eligibility={ranking} />
-            </div>
-          )}
+            ) : (
+              <VanList vans={board.vans} boardDate={board.date} selectedJob={null} eligibility={null} />
+            )}
+          </div>
           <OverlayDrawer
             {...restoreFocusSource}
             position="end"
             size="full"
             open={detailsOpen && selectedJob !== null}
             onOpenChange={(_, data) => setDetailsOpen(data.open)}
-            aria-label="Request details"
+            aria-label="Request workspace"
           >
             <DrawerHeader>
               <DrawerHeaderTitle
                 action={
-                  <Button appearance="subtle" aria-label="Close details" icon={<DismissRegular />} onClick={() => setDetailsOpen(false)} />
+                  <Button
+                    appearance="subtle"
+                    aria-label="Close details"
+                    icon={<DismissRegular />}
+                    onClick={() => setDetailsOpen(false)}
+                  />
                 }
               >
-                Request details
+                Request workspace
               </DrawerHeaderTitle>
+              {selectedJob && (
+                <div className={styles.context}>
+                  <Text
+                    as="h2"
+                    id={`request-${selectedJob.id}-title`}
+                    size={400}
+                    weight="semibold"
+                    className={styles.panelTitle}
+                  >
+                    {selectedJob.customer.name} — {selectedJob.branch.name}
+                  </Text>
+                  <Text size={200}>
+                    {selectedJob.reference} · {JOB_TYPE_LABEL[selectedJob.type]} ·{" "}
+                    {selectedJob.branch.zone ?? "Zone not set"}
+                  </Text>
+                  <Text weight="semibold">{waitingLabel(describeWaitingTime(selectedJob))}</Text>
+                </div>
+              )}
+              <TabList
+                selectedValue={workspaceTab}
+                onTabSelect={(_, data) => setWorkspaceTab(data.value as "details" | "choices")}
+              >
+                <Tab value="details" id="workspace-details">
+                  Details
+                </Tab>
+                <Tab value="choices" id="workspace-choices">
+                  Van choices
+                </Tab>
+              </TabList>
             </DrawerHeader>
             <DrawerBody>
+              {noticeInDrawer && jobActions.notice}
               {selectedJob && (
-                <RequestDetails
-                  job={selectedJob}
-                  boardDate={board.date}
-                  eligibility={eligibility}
-                  onRetryEligibility={retryEligibility}
-                  notice={noticeInDrawer ? jobActions.notice : null}
-                  actions={jobActions.actionButton}
-                  footer={
-                    <Button
-                      appearance="primary"
-                      icon={<VehicleTruckProfileRegular />}
-                      onClick={() => {
-                        setTab("vans");
-                        setDetailsOpen(false);
-                        focusVansPending.current = true;
-                      }}
-                    >
-                      Show vans for this job
-                    </Button>
-                  }
-                />
+                <div
+                  role="tabpanel"
+                  aria-labelledby={workspaceTab === "details" ? "workspace-details" : "workspace-choices"}
+                  className={styles.panel}
+                >
+                  {workspaceTab === "details" ? (
+                    <RequestDetails
+                      key={selectedJob.id}
+                      job={selectedJob}
+                      boardDate={board.date}
+                      eligibility={eligibility}
+                      onRetryEligibility={retryEligibility}
+                      hideHeader
+                    />
+                  ) : (
+                    <>
+                      {selectedJob.status === "REQUESTED" && (
+                        <EligibilitySummary state={eligibility} onRetry={retryEligibility} />
+                      )}
+                      <VanList
+                        vans={board.vans}
+                        boardDate={board.date}
+                        selectedJob={selectedJob}
+                        eligibility={ranking}
+                      />
+                    </>
+                  )}
+                </div>
               )}
             </DrawerBody>
+            <DrawerFooter className={styles.footer}>{jobActions.actionButton}</DrawerFooter>
           </OverlayDrawer>
         </>
       )}
-
       {board && !narrow && (
         <div className={styles.columns}>
           <section className={mergeClasses(styles.panel, styles.scroller)} aria-labelledby="requests-title">
             <Text as="h2" id="requests-title" size={400} weight="semibold" className={styles.panelTitle}>
               Requests
             </Text>
-            <RequestList awaiting={board.openRequests} assigned={board.assignedWork} selectedId={selectedId} onSelect={select} />
+            <RequestList
+              awaiting={board.openRequests}
+              assigned={board.assignedWork}
+              selectedId={selectedId}
+              onSelect={select}
+            />
           </section>
           <div ref={detailsPanelRef} className={mergeClasses(styles.panel, styles.scroller)}>
             <section className={styles.surface} aria-label="Selected request">
               {selectedJob ? (
                 <RequestDetails
+                  key={selectedJob.id}
                   job={selectedJob}
                   boardDate={board.date}
                   eligibility={eligibility}
@@ -256,14 +274,12 @@ export function DispatchBoard({ loadBoard, loadEligibility }: DispatchBoardProps
                   actions={jobActions.actionButton}
                 />
               ) : (
-                <Text className={styles.hint}>
-                  Select a request to see its details and which vans can take it.
-                </Text>
+                <Text className={styles.hint}>Select a request to see its details and which vans can take it.</Text>
               )}
             </section>
             <section className={styles.panel} aria-labelledby="vans-title">
               <Text as="h2" id="vans-title" size={400} weight="semibold" className={styles.panelTitle}>
-                Vans ({board.vans.length})
+                Van choices ({board.vans.length})
               </Text>
               <VanList vans={board.vans} boardDate={board.date} selectedJob={selectedJob} eligibility={ranking} />
             </section>

@@ -87,13 +87,19 @@ export function VanChoice({ job, eligibility, vans, value, onChange, error }: Va
           </Text>
           <VanEligibilityReasons eligibility={selected} />
           {selectedBoardVan && (
-            <JobItemsOnVan items={job.items} lines={selectedBoardVan.stock.lines} vanCode={selected.code} shortages={selected.shortages} />
+            <JobItemsOnVan
+              showStockDetails
+              items={job.items}
+              lines={selectedBoardVan.stock.lines}
+              vanCode={selected.code}
+              shortages={selected.shortages}
+            />
           )}
         </section>
       )}
 
       {unavailable.length > 0 && (
-        <Accordion collapsible defaultOpenItems={eligible.length === 0 ? ["unavailable"] : []}>
+        <Accordion collapsible>
           <AccordionItem value="unavailable">
             <AccordionHeader size="small">Vans that can&apos;t take it ({unavailable.length})</AccordionHeader>
             <AccordionPanel>
@@ -105,7 +111,17 @@ export function VanChoice({ job, eligibility, vans, value, onChange, error }: Va
                       <Text weight="semibold">
                         {van.code} · {van.technician?.name ?? "no technician"}
                       </Text>
-                      <VanEligibilityReasons eligibility={van} vanStatus={status ? VAN_STATUS_LABEL[status] : undefined} />
+                      <VanEligibilityReasons
+                        eligibility={van}
+                        vanStatus={status ? VAN_STATUS_LABEL[status] : undefined}
+                      />
+                      <JobItemsOnVan
+                        showStockDetails
+                        items={job.items}
+                        lines={boardVan(van.vanId)?.stock.lines ?? []}
+                        vanCode={van.code}
+                        shortages={van.shortages}
+                      />
                     </div>
                   );
                 })}

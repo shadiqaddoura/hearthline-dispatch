@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import {
-  MessageBar,
-  MessageBarBody,
-  MessageBarTitle,
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel,
   Table,
   TableBody,
   TableCell,
@@ -28,7 +29,7 @@ import {
   type WaitingTime,
 } from "@/lib/dispatch/presentation";
 import { EligibilitySummary } from "./eligibility";
-import { BlockingBadge, JobStatusBadge } from "./job-badges";
+import { JobStatusBadge } from "./job-badges";
 import type { EligibilityState } from "./use-dispatch-data";
 
 const useStyles = makeStyles({
@@ -59,12 +60,10 @@ interface RequestDetailsProps {
   boardDate: string;
   eligibility: EligibilityState;
   onRetryEligibility: () => void;
-  /** A confirmation to show above the details, e.g. after assigning. */
-  notice?: ReactNode;
   /** Assignment or scheduling controls for this job. */
   actions?: ReactNode;
-  /** Extra controls for the layout, e.g. "Show vans" on phones. */
-  footer?: ReactNode;
+  /** Mobile keeps this context in the drawer header. */
+  hideHeader?: boolean;
 }
 
 export function RequestDetails({
@@ -72,72 +71,27 @@ export function RequestDetails({
   boardDate,
   eligibility,
   onRetryEligibility,
-  notice,
   actions,
-  footer,
+  hideHeader = false,
 }: RequestDetailsProps) {
   const styles = useStyles();
   const waiting = describeWaitingTime(job);
 
   return (
     <article className={styles.root} aria-labelledby={`request-${job.id}-title`}>
-      {notice}
-      <header className={styles.header}>
-        <Text as="h2" id={`request-${job.id}-title`} size={500} weight="semibold" className={styles.title}>
-          {job.customer.name} — {job.branch.name}
-        </Text>
-        <Text size={200} className={styles.secondary}>
-          {job.reference} · {JOB_TYPE_LABEL[job.type]} · zone {job.branch.zone ?? "not set"}
-        </Text>
-        <span className={styles.badges}>
-          <JobStatusBadge status={job.status} />
-          {job.blockingReason && <BlockingBadge reason={job.blockingReason} />}
-        </span>
-      </header>
-
-      <dl className={styles.facts}>
-        <dt className={styles.term}>Requested on</dt>
-        <dd className={styles.definition}>{requestedOnLabel(waiting)}</dd>
-        <dt className={styles.term}>Waiting time</dt>
-        <dd className={styles.definition}>
-          {waitingLabel(waiting)}
-          <span className={styles.hint}>{waitingHint(waiting, boardDate)}</span>
-        </dd>
-        {job.status === "REQUESTED" && job.scheduledFor && (
-          <>
-            <dt className={styles.term}>Planned day</dt>
-            <dd className={styles.definition}>
-              {scheduleLabel(job)}
-              <span className={styles.hint}>Recorded before assignment; it can be kept or changed when assigning.</span>
-            </dd>
-          </>
-        )}
-        {job.status !== "REQUESTED" && (
-          <>
-            <dt className={styles.term}>Van</dt>
-            <dd className={styles.definition}>
-              {job.van?.code ?? "None"}
-              {job.technician ? ` with ${job.technician.name}` : " (no technician)"}
-            </dd>
-            <dt className={styles.term}>Scheduled</dt>
-            <dd className={styles.definition}>{scheduleLabel(job)}</dd>
-          </>
-        )}
-        {job.sourceStatus && (
-          <>
-            <dt className={styles.term}>Imported status</dt>
-            <dd className={styles.definition}>“{job.sourceStatus}”</dd>
-          </>
-        )}
-      </dl>
-
-      {job.blockingReason && (
-        <MessageBar intent={job.blockingReason === "IMPORT_NEEDS_REVIEW" ? "warning" : "error"} layout="multiline">
-          <MessageBarBody>
-            <MessageBarTitle>{BLOCKING_REASON_LABEL[job.blockingReason]}</MessageBarTitle>
-            {job.blockingDetail ?? "No further detail was recorded."}
-          </MessageBarBody>
-        </MessageBar>
+      {!hideHeader && (
+        <header className={styles.header}>
+          <Text as="h2" id={`request-${job.id}-title`} size={500} weight="semibold" className={styles.title}>
+            {job.customer.name} — {job.branch.name}
+          </Text>
+          <Text size={200} className={styles.secondary}>
+            {job.reference} · {JOB_TYPE_LABEL[job.type]} · zone {job.branch.zone ?? "not set"}
+          </Text>
+          <span className={styles.badges}>
+            <Text weight="semibold">{waitingLabel(waiting)}</Text>
+            {job.status !== "REQUESTED" && <JobStatusBadge status={job.status} />}
+          </span>
+        </header>
       )}
 
       <section aria-labelledby={`request-${job.id}-items`}>
@@ -168,13 +122,6 @@ export function RequestDetails({
         )}
       </section>
 
-      {job.notes && (
-        <Text>
-          <span className={styles.term}>Notes: </span>
-          {job.notes}
-        </Text>
-      )}
-
       {job.status === "REQUESTED" ? (
         <EligibilitySummary state={eligibility} onRetry={onRetryEligibility} />
       ) : (
@@ -186,8 +133,74 @@ export function RequestDetails({
         </Text>
       )}
 
+      {job.status !== "REQUESTED" && (
+        <Text>
+          {job.van?.code ?? "None"}
+          {job.technician ? ` with ${job.technician.name}` : " (no technician)"} · {scheduleLabel(job)}
+        </Text>
+      )}
+      {job.status !== "REQUESTED" && job.blockingReason && (
+        <Text role="status">
+          {BLOCKING_REASON_LABEL[job.blockingReason]} — check recorded details before continuing.
+        </Text>
+      )}
+      {job.status === "REQUESTED" && job.blockingReason === "IMPORT_NEEDS_REVIEW" && (
+        <Text>Import needs review — check the recorded details before assigning.</Text>
+      )}
+      <Accordion collapsible>
+        <AccordionItem value="recorded">
+          <AccordionHeader size="small">Recorded details &amp; notes</AccordionHeader>
+          <AccordionPanel>
+            <dl className={styles.facts}>
+              <dt className={styles.term}>Requested on</dt>
+              <dd className={styles.definition}>{requestedOnLabel(waiting)}</dd>
+              <dt className={styles.term}>Waiting time</dt>
+              <dd className={styles.definition}>
+                {waitingLabel(waiting)}
+                <span className={styles.hint}>{waitingHint(waiting, boardDate)}</span>
+              </dd>
+              {job.status === "REQUESTED" && job.scheduledFor && (
+                <>
+                  <dt className={styles.term}>Planned day</dt>
+                  <dd className={styles.definition}>
+                    {scheduleLabel(job)}
+                    <span className={styles.hint}>
+                      Recorded before assignment; it can be kept or changed when assigning.
+                    </span>
+                  </dd>
+                </>
+              )}
+              {job.status !== "REQUESTED" && (
+                <>
+                  <dt className={styles.term}>Van</dt>
+                  <dd className={styles.definition}>
+                    {job.van?.code ?? "None"}
+                    {job.technician ? ` with ${job.technician.name}` : " (no technician)"}
+                  </dd>
+                  <dt className={styles.term}>Scheduled</dt>
+                  <dd className={styles.definition}>{scheduleLabel(job)}</dd>
+                </>
+              )}
+              {job.sourceStatus && (
+                <>
+                  <dt className={styles.term}>Imported status</dt>
+                  <dd className={styles.definition}>“{job.sourceStatus}”</dd>
+                </>
+              )}
+            </dl>
+
+            {job.blockingReason && (
+              <Text as="p">
+                <strong>{BLOCKING_REASON_LABEL[job.blockingReason]}: </strong>
+                {job.blockingDetail ?? "No further detail was recorded."}
+              </Text>
+            )}
+            {job.notes && <Text as="p">Notes: {job.notes}</Text>}
+          </AccordionPanel>
+        </AccordionItem>
+      </Accordion>
+
       {actions && <div className={styles.actions}>{actions}</div>}
-      {footer}
     </article>
   );
 }

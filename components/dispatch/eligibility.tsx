@@ -13,13 +13,19 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { ArrowClockwiseRegular } from "@fluentui/react-icons";
-import type { StockShortageDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
+import type { VanEligibilityDto } from "@/lib/contracts/dispatch";
 import { VAN_PROBLEM_LABEL } from "@/lib/dispatch/presentation";
 import type { EligibilityState } from "./use-dispatch-data";
 
 const useStyles = makeStyles({
   verdict: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalXS },
-  problems: { margin: 0, paddingInlineStart: tokens.spacingHorizontalL, display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXXS },
+  problems: {
+    margin: 0,
+    paddingInlineStart: tokens.spacingHorizontalL,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXXS,
+  },
   problemLabel: { fontWeight: tokens.fontWeightSemibold },
   secondary: { color: tokens.colorNeutralForeground3 },
   reasons: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
@@ -30,8 +36,18 @@ const useStyles = makeStyles({
  * One van's verdict for the selected job, with the backend's specific reasons.
  * `vanStatus` (e.g. "In the garage") reads better than the API's status code.
  */
-export function VanEligibilityReasons({ eligibility, vanStatus }: { eligibility: VanEligibilityDto; vanStatus?: string }) {
+export function VanEligibilityReasons({
+  eligibility,
+  vanStatus,
+}: {
+  eligibility: VanEligibilityDto;
+  vanStatus?: string;
+}) {
   const styles = useStyles();
+  // Product blockers are explained once in the structured product comparison.
+  const otherProblems = eligibility.problems.filter(
+    (problem) => problem.code !== "INSUFFICIENT_STOCK" && problem.code !== "UNITS_NEED_VERIFICATION",
+  );
   return (
     <div className={styles.reasons}>
       <div className={styles.verdict}>
@@ -50,9 +66,9 @@ export function VanEligibilityReasons({ eligibility, vanStatus }: { eligibility:
           </Badge>
         )}
       </div>
-      {eligibility.problems.length > 0 && (
+      {otherProblems.length > 0 && (
         <ul className={styles.problems}>
-          {eligibility.problems.map((problem) => (
+          {otherProblems.map((problem) => (
             <li key={problem.code}>
               <Text size={200}>
                 <span className={styles.problemLabel}>{VAN_PROBLEM_LABEL[problem.code]}:</span>{" "}
@@ -66,20 +82,13 @@ export function VanEligibilityReasons({ eligibility, vanStatus }: { eligibility:
   );
 }
 
-function problemDetail(code: VanEligibilityDto["problems"][number]["code"], van: VanEligibilityDto, vanStatus?: string): string {
-  if (code === "INSUFFICIENT_STOCK" || code === "UNITS_NEED_VERIFICATION") return describeShortages(van.shortages);
+function problemDetail(
+  code: VanEligibilityDto["problems"][number]["code"],
+  van: VanEligibilityDto,
+  vanStatus?: string,
+): string {
   if (code === "VAN_NOT_ACTIVE" && vanStatus) return `${van.code} is ${vanStatus.toLowerCase()}`;
   return van.problems.find((p) => p.code === code)!.message;
-}
-
-/** "PRN-80: needs 1, 0 available (1 waiting for a serial)" for each short product. */
-export function describeShortages(shortages: StockShortageDto[]): string {
-  return shortages
-    .map((s) => {
-      const waiting = s.needsVerification > 0 ? ` (${s.needsVerification} waiting for a serial)` : "";
-      return `${s.sku}: needs ${s.required}, ${s.available} available${waiting}`;
-    })
-    .join("; ");
 }
 
 interface EligibilitySummaryProps {
@@ -124,7 +133,7 @@ export function EligibilitySummary({ state, onRetry }: EligibilitySummaryProps) 
               <MessageBarTitle>No van can take this job right now.</MessageBarTitle>
               {state.vans.length === 0
                 ? "There are no vans to check."
-                : "Each van below says why. Recording serials, restocking or a driver change can make a van eligible."}
+                : "Review van reasons. Stock, serial or driver changes may unblock this job."}
             </MessageBarBody>
           </MessageBar>
         );
@@ -134,8 +143,7 @@ export function EligibilitySummary({ state, onRetry }: EligibilitySummaryProps) 
           <strong>
             {eligible.length} {eligible.length === 1 ? "van can" : "vans can"} take this job:
           </strong>{" "}
-          {eligible.map((v) => `${v.code}${v.zoneMatch ? " (same zone)" : ""}`).join(", ")}
-          <span className={styles.secondary}>. Same-zone vans are preferred, not required.</span>
+          <span className={styles.secondary}> Review van choices. Zone is a preference, not a requirement.</span>
         </Text>
       );
     }

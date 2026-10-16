@@ -7,7 +7,6 @@ import {
   AccordionPanel,
   Badge,
   Card,
-  CardHeader,
   Text,
   makeStyles,
   mergeClasses,
@@ -15,7 +14,7 @@ import {
 } from "@fluentui/react-components";
 import type { DispatchBoardDto, VanEligibilityDto } from "@/lib/contracts/dispatch";
 import type { JobDto } from "@/lib/contracts/jobs";
-import { VAN_STATUS_LABEL, scheduleLabel } from "@/lib/dispatch/presentation";
+import { VAN_PROBLEM_LABEL, VAN_STATUS_LABEL, scheduleLabel } from "@/lib/dispatch/presentation";
 import { VanEligibilityReasons } from "./eligibility";
 import { JobStatusBadge } from "./job-badges";
 import { JobItemsOnVan, StockTable } from "./stock-summary";
@@ -23,42 +22,42 @@ import { JobItemsOnVan, StockTable } from "./stock-summary";
 export type BoardVan = DispatchBoardDto["vans"][number];
 
 const useStyles = makeStyles({
-  card: { gap: tokens.spacingVerticalM, borderLeft: `${tokens.strokeWidthThickest} solid transparent` },
-  eligible: { borderLeftColor: tokens.colorPaletteGreenBorderActive, backgroundColor: tokens.colorPaletteGreenBackground1 },
+  card: { gap: tokens.spacingVerticalXS, borderLeft: `${tokens.strokeWidthThickest} solid transparent` },
+  eligible: { borderLeftColor: tokens.colorPaletteGreenBorderActive },
   assignedHere: { borderLeftColor: tokens.colorBrandStroke1 },
-  dimmed: { backgroundColor: tokens.colorNeutralBackground2 },
-  title: { display: "flex", alignItems: "baseline", gap: tokens.spacingHorizontalS },
-  plate: { color: tokens.colorNeutralForeground3, fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200 },
-  badges: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalXS },
-  facts: {
-    display: "grid",
-    gridTemplateColumns: "max-content 1fr",
-    columnGap: tokens.spacingHorizontalM,
-    rowGap: tokens.spacingVerticalXXS,
-    margin: 0,
+  summary: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: tokens.spacingHorizontalS,
   },
-  term: { color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
-  definition: { margin: 0, fontSize: tokens.fontSizeBase200 },
-  section: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
-  sectionTitle: { margin: 0 },
-  jobs: { margin: 0, paddingInlineStart: tokens.spacingHorizontalL, display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
-  job: { fontSize: tokens.fontSizeBase200 },
-  secondary: { color: tokens.colorNeutralForeground3 },
+  identity: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: tokens.spacingHorizontalS },
+  title: { margin: 0 },
+  verdict: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalS },
+  details: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  jobs: {
+    margin: 0,
+    paddingInlineStart: tokens.spacingHorizontalL,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+  },
+  secondary: { color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
 });
 
 interface VanCardProps {
   entry: BoardVan;
   boardDate: string;
   selectedJob: JobDto | null;
-  /** The backend's verdict for the selected request, once loaded. */
   eligibility?: VanEligibilityDto;
 }
 
+/** Compare vans first; inspect the full server verdict, inventory and run list on demand. */
 export function VanCard({ entry, boardDate, selectedJob, eligibility }: VanCardProps) {
   const styles = useStyles();
   const { van, stock, assignedJobs, jobsToday } = entry;
   const assignedToSelected = selectedJob?.van?.id === van.id;
-  const completedToday = jobsToday.filter((job) => job.status === "COMPLETED").length;
   const titleId = `van-${van.id}-title`;
 
   return (
@@ -68,98 +67,94 @@ export function VanCard({ entry, boardDate, selectedJob, eligibility }: VanCardP
         styles.card,
         eligibility?.eligible && styles.eligible,
         assignedToSelected && styles.assignedHere,
-        eligibility && !eligibility.eligible && styles.dimmed,
       )}
     >
-      <CardHeader
-        header={
-          <span className={styles.title}>
-            <Text as="h3" id={titleId} size={400} weight="semibold" style={{ margin: 0 }}>
-              {van.code}
-            </Text>
-            {van.plate && <span className={styles.plate}>{van.plate}</span>}
-          </span>
-        }
-        description={
-          <span className={styles.badges}>
-            <Badge appearance="tint" color={van.status === "ACTIVE" ? "success" : "warning"} shape="rounded">
-              {VAN_STATUS_LABEL[van.status]}
-            </Badge>
-            {van.isPool && (
-              <Badge appearance="outline" color="informative" shape="rounded">
-                Pool van
-              </Badge>
-            )}
-            {!van.technician && (
-              <Badge appearance="tint" color="danger" shape="rounded">
-                No driver
-              </Badge>
-            )}
-          </span>
-        }
-      />
-
-      <dl className={styles.facts}>
-        <dt className={styles.term}>Technician</dt>
-        <dd className={styles.definition}>{van.technician?.name ?? "None assigned"}</dd>
-        <dt className={styles.term}>Usual zone</dt>
-        <dd className={styles.definition}>{van.zone ?? "None set"}</dd>
-        {van.statusNote && van.statusNote.trim().toLowerCase() !== van.status.toLowerCase() && (
+      <div className={styles.summary}>
+        <div className={styles.identity}>
+          <Text as="h3" id={titleId} size={400} weight="semibold" className={styles.title}>
+            {van.code}
+          </Text>
+          <Text>{van.technician?.name ?? "No driver"}</Text>
+          <Text className={styles.secondary}>
+            {van.zone ?? "No usual zone"}
+            {van.isPool ? " · Pool van" : ""}
+          </Text>
+        </div>
+        <Text className={styles.secondary}>{jobsToday.length} jobs today</Text>
+      </div>
+      <div className={styles.verdict}>
+        {eligibility ? (
           <>
-            <dt className={styles.term}>Note</dt>
-            <dd className={styles.definition}>{van.statusNote}</dd>
+            <Badge appearance="tint" color={eligibility.eligible ? "success" : "danger"} shape="rounded">
+              {eligibility.eligible ? "Can take this job" : "Can't take this job"}
+            </Badge>
+            <Text className={styles.secondary}>
+              {eligibility.eligible
+                ? eligibility.zoneMatch
+                  ? "Same zone"
+                  : "Different zone · allowed"
+                : eligibility.problems[0]
+                  ? VAN_PROBLEM_LABEL[eligibility.problems[0].code]
+                  : "See recorded reasons"}
+            </Text>
           </>
-        )}
-      </dl>
-
-      {selectedJob && (eligibility || assignedToSelected) && (
-        <section className={styles.section} aria-label={`${van.code} for ${selectedJob.reference}`}>
-          {eligibility && <VanEligibilityReasons eligibility={eligibility} vanStatus={VAN_STATUS_LABEL[van.status]} />}
-          {assignedToSelected && (
-            <span className={styles.badges}>
-              <Badge appearance="filled" color="brand" shape="rounded">
-                Has {selectedJob.reference}
-              </Badge>
-            </span>
-          )}
-          <JobItemsOnVan
-            items={selectedJob.items}
-            lines={stock.lines}
-            vanCode={van.code}
-            shortages={eligibility?.shortages}
-          />
-        </section>
-      )}
-
-      <section className={styles.section} aria-labelledby={`${titleId}-jobs`}>
-        <Text as="h4" id={`${titleId}-jobs`} size={200} weight="semibold" className={styles.sectionTitle}>
-          Assigned jobs ({assignedJobs.length})
-        </Text>
-        {assignedJobs.length === 0 ? (
-          <Text size={200} className={styles.secondary}>
-            No assigned jobs.
-          </Text>
         ) : (
-          <ol className={styles.jobs}>
-            {assignedJobs.map((job) => (
-              <li key={job.id} className={styles.job}>
-                {scheduleLabel(job)} — {job.reference}, {job.customer.name} <JobStatusBadge status={job.status} />
-              </li>
-            ))}
-          </ol>
+          <Text className={styles.secondary}>{VAN_STATUS_LABEL[van.status]}</Text>
         )}
-        {completedToday > 0 && (
-          <Text size={200} className={styles.secondary}>
-            Completed on the board date: {completedToday}
-          </Text>
+        {assignedToSelected && (
+          <Badge appearance="tint" color="brand">
+            Has {selectedJob.reference}
+          </Badge>
         )}
-      </section>
-
+      </div>
       <Accordion collapsible>
-        <AccordionItem value="stock">
-          <AccordionHeader size="small">All stock ({stock.lines.length} products)</AccordionHeader>
-          <AccordionPanel>
-            <StockTable lines={stock.lines} caption={`${van.code} stock on ${boardDate}`} />
+        <AccordionItem value="inventory">
+          <AccordionHeader size="small">Inventory &amp; reasons · {assignedJobs.length} assigned</AccordionHeader>
+          <AccordionPanel className={styles.details}>
+            <Text size={200}>
+              {van.plate ?? "Plate not recorded"} · {VAN_STATUS_LABEL[van.status]}
+            </Text>
+            {van.statusNote && <Text size={200}>{van.statusNote}</Text>}
+            {eligibility && (
+              <VanEligibilityReasons eligibility={eligibility} vanStatus={VAN_STATUS_LABEL[van.status]} />
+            )}
+            {selectedJob && (eligibility || assignedToSelected) && (
+              <JobItemsOnVan
+                items={selectedJob.items}
+                lines={stock.lines}
+                vanCode={van.code}
+                shortages={eligibility?.shortages}
+              />
+            )}
+            <Text size={200} className={styles.secondary}>
+              Working counts working-condition stock; broken units are separate. Reserved is promised to jobs. Available
+              excludes reservations and unverified units.
+            </Text>
+            <StockTable lines={stock.lines} title={`Full inventory on ${van.code}`} asOf={boardDate} />
+            {assignedJobs.length > 0 && (
+              <section aria-label={`${van.code} assigned jobs`}>
+                <Text weight="semibold">Assigned jobs</Text>
+                <ol className={styles.jobs}>
+                  {assignedJobs.map((job) => (
+                    <li key={job.id}>
+                      {scheduleLabel(job)} — {job.reference}, {job.customer.name} <JobStatusBadge status={job.status} />
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+            {jobsToday.length > 0 && (
+              <section aria-label={`${van.code} jobs today`}>
+                <Text weight="semibold">On {boardDate}</Text>
+                <ul className={styles.jobs}>
+                  {jobsToday.map((job) => (
+                    <li key={job.id}>
+                      {job.reference}, {job.customer.name} <JobStatusBadge status={job.status} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </AccordionPanel>
         </AccordionItem>
       </Accordion>

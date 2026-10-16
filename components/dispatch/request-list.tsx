@@ -10,13 +10,20 @@ import {
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
 import type { JobDto } from "@/lib/contracts/jobs";
-import { JOB_TYPE_LABEL, describeWaitingTime, scheduleLabel, waitingLabel } from "@/lib/dispatch/presentation";
+import { describeWaitingTime, scheduleLabel, waitingLabel } from "@/lib/dispatch/presentation";
 import { BlockingBadge, JobStatusBadge } from "./job-badges";
 
 const useStyles = makeStyles({
   section: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalS },
   heading: { margin: 0 },
-  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS },
+  list: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+  },
   // Only box properties on the Button itself; the layout lives on `content`, which
   // Button doesn't style, so it can't lose to Button's own alignment rules.
   item: {
@@ -42,11 +49,17 @@ const useStyles = makeStyles({
     ":hover": { backgroundColor: tokens.colorBrandBackground2Hover },
     ":hover:active": { backgroundColor: tokens.colorBrandBackground2Pressed },
   },
-  row: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: tokens.spacingHorizontalS },
+  row: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: tokens.spacingHorizontalS,
+  },
   customer: { fontWeight: tokens.fontWeightSemibold },
   secondary: { color: tokens.colorNeutralForeground3 },
   badges: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalXS, marginTop: tokens.spacingVerticalXXS },
-  waiting: { fontVariantNumeric: "tabular-nums" },
+  waiting: { fontVariantNumeric: "tabular-nums", fontWeight: tokens.fontWeightSemibold, whiteSpace: "nowrap" },
   empty: { color: tokens.colorNeutralForeground3, paddingBlock: tokens.spacingVerticalS },
 });
 
@@ -112,7 +125,12 @@ function RequestGroup({
         <ul className={styles.list} aria-labelledby={headingId} {...arrowNavigation}>
           {jobs.map((job) => (
             <li key={job.id}>
-              <RequestItem job={job} selected={job.id === selectedId} onSelect={onSelect} focusTarget={restoreFocusTarget} />
+              <RequestItem
+                job={job}
+                selected={job.id === selectedId}
+                onSelect={onSelect}
+                focusTarget={restoreFocusTarget}
+              />
             </li>
           ))}
         </ul>
@@ -146,20 +164,21 @@ function RequestItem({
       <span className={styles.content}>
         <span className={styles.row}>
           <span className={styles.customer}>{job.customer.name}</span>
-          <Text size={200} className={styles.secondary}>
-            {JOB_TYPE_LABEL[job.type]}
+          <Text size={200} className={styles.waiting}>
+            {waitingLabel(waiting)}
           </Text>
         </span>
         <Text size={200} className={styles.secondary}>
           {job.branch.name}
           {job.branch.zone ? ` · ${job.branch.zone}` : ""} · {job.reference}
         </Text>
-        <Text size={200} className={styles.waiting}>
-          {waitingLabel(waiting)}
-          {job.van ? ` · ${job.van.code}, ${scheduleLabel(job)}` : ""}
-        </Text>
+        {job.van && (
+          <Text size={200} className={styles.secondary}>
+            {job.van.code}, {scheduleLabel(job)}
+          </Text>
+        )}
         <span className={styles.badges}>
-          <JobStatusBadge status={job.status} />
+          {job.status !== "REQUESTED" && <JobStatusBadge status={job.status} />}
           {job.blockingReason && <BlockingBadge reason={job.blockingReason} />}
         </span>
       </span>
