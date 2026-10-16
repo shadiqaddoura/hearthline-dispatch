@@ -139,7 +139,7 @@ export async function reassignJob(jobId: string, input: ReassignJobRequest): Pro
 }
 
 /** Checks the van can take the job (under its location lock) and creates the reservations. */
-async function reserveOnVan(tx: Tx, job: JobRow, vanId: string) {
+export async function reserveOnVan(tx: Tx, job: JobRow, vanId: string) {
   const found = await tx.van.findUnique({ where: { id: vanId } });
   if (!found) throw notFound("Van", vanId);
   await lockLocations(tx, [found.locationId]);

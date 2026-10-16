@@ -1,6 +1,17 @@
 import { z } from "zod";
-import { BlockingReason, JobStatus, JobType, ReservationStatus } from "@/generated/prisma/enums";
-import { actorSchema, idSchema, isoDateSchema, positiveIntSchema, productQuantitySchema } from "./common";
+import {
+  BlockingReason,
+  JobStatus,
+  JobType,
+  ReservationStatus,
+} from "@/generated/prisma/enums";
+import {
+  actorSchema,
+  idSchema,
+  isoDateSchema,
+  positiveIntSchema,
+  productQuantitySchema,
+} from "./common";
 
 export const createJobRequest = z.object({
   reference: z.string().trim().min(1).optional(),
@@ -11,11 +22,23 @@ export const createJobRequest = z.object({
   items: z
     .array(z.object({ productId: idSchema, quantity: positiveIntSchema }))
     .min(1, "A job needs at least one required item")
-    .refine((items) => new Set(items.map((i) => i.productId)).size === items.length, {
-      message: "List each product once",
-    }),
+    .refine(
+      (items) => new Set(items.map((i) => i.productId)).size === items.length,
+      {
+        message: "List each product once",
+      },
+    ),
   notes: z.string().trim().max(2000).optional(),
 });
+
+// Updates are explicit request edits; scheduling never accepts these fields.
+export const updateJobRequest = createJobRequest
+  .omit({ reference: true })
+  .extend({
+    requestedOn: isoDateSchema.nullable(),
+    expectedUpdatedAt: z.iso.datetime().optional(),
+  });
+export type UpdateJobRequest = z.infer<typeof updateJobRequest>;
 
 export type CreateJobRequest = z.infer<typeof createJobRequest>;
 
@@ -73,6 +96,9 @@ export interface ReservationDto {
 }
 
 export interface JobDto {
+  /** Server-computed deletion restriction; mutations always recheck under lock. */
+  deletionBlockedReason?: string | null;
+  updatedAt?: string;
   id: string;
   reference: string;
   type: JobType;

@@ -201,7 +201,7 @@ model StockMovement {
   fromLocation Location?        @relation("MovementFrom", fields: [fromLocationId], references: [id])
   toLocation   Location?        @relation("MovementTo", fields: [toLocationId], references: [id])
   branch       Branch?          @relation(fields: [branchId], references: [id])
-  job          Job?             @relation(fields: [jobId], references: [id])
+  job          Job?             @relation(fields: [jobId], references: [id], onDelete: Restrict)
   restockJob   RestockJob?      @relation(fields: [restockJobId], references: [id])
   correction   StockCorrection? @relation(fields: [correctionId], references: [id])
   importRow    ImportSourceRow? @relation(fields: [importRowId], references: [id])
