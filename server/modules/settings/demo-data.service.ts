@@ -9,39 +9,39 @@ import { moveStock } from "@/server/modules/inventory/stock-ledger";
 const DESCRIPTORS: Record<DemoSection, { title: string; description: string; records: string[]; dependencies: string[] }> = {
   PRODUCTS: {
     title: "Products Catalog",
-    description: "Two clearly labelled catalog products with restocking rules. No stock is created.",
-    records: ["Demo paper rolls", "Demo ethernet cables"],
+    description: "Two catalog products with restocking rules. No stock is created.",
+    records: ["Thermal Paper Rolls (THERMAL-PAPER-80)", "Cat6 Ethernet Cable (ETHERNET-CAT6)"],
     dependencies: [],
   },
   CUSTOMERS: {
     title: "Customers and branches",
-    description: "One demo customer with two branches. No requests or jobs are created.",
-    records: ["Demo Hearth Cafe", "Downtown branch", "Airport branch"],
+    description: "One customer with two branches. No requests or jobs are created.",
+    records: ["Juniper Table Group", "Downtown branch", "Airport branch"],
     dependencies: [],
   },
   FLEET: {
     title: "Fleet and technicians",
-    description: "One active demo van, its stock location, and one technician. The van starts empty.",
-    records: ["Demo van DEMO-V1", "Demo technician Dana", "Van stock location"],
+    description: "One active van, its stock location, and one technician. The van starts empty.",
+    records: ["Van V-12", "Dana Haddad", "Van V-12 stock location"],
     dependencies: [],
   },
   INVENTORY: {
     title: "Inventory locations and stock",
-    description: "Adds a retry-safe opening balance of demo paper to the demo van through the stock ledger.",
-    records: ["25 working demo paper rolls", "Opening-balance movement"],
-    dependencies: ["Demo paper product", "Demo van and its location"],
+    description: "Adds a retry-safe opening balance of thermal paper to the van through the stock ledger.",
+    records: ["25 working thermal paper rolls", "Opening-balance movement"],
+    dependencies: ["Thermal paper product", "Van V-12 and its location"],
   },
   DISPATCH: {
     title: "Dispatch requests and jobs",
-    description: "Creates one unassigned demo delivery request with one product line.",
-    records: ["Request DEMO-REQ-001", "One demo paper line"],
-    dependencies: ["Demo paper product", "Demo customer and Downtown branch"],
+    description: "Creates one unassigned delivery request with one product line.",
+    records: ["Request REQ-2026-1042", "One thermal paper line"],
+    dependencies: ["Thermal paper product", "Juniper Table Group and its Downtown branch"],
   },
   RESTOCKING: {
     title: "Restocking",
-    description: "Creates one open demo pick list without moving stock or recalculating operational vans.",
-    records: ["One open restock job", "Demo paper pick-list line"],
-    dependencies: ["Demo paper product", "Demo van and its location"],
+    description: "Creates one open pick list without moving stock or recalculating other vans.",
+    records: ["One open restock job", "Thermal paper pick-list line"],
+    dependencies: ["Thermal paper product", "Van V-12 and its location"],
   },
 };
 
@@ -139,9 +139,12 @@ function fixtureLabel(key: string) {
   return ({ "product.paper": "the demo paper product", "fleet.van": "the demo van and fleet records", "customer.downtown": "the demo customer and Downtown branch" } as Record<string, string>)[key] ?? key;
 }
 
+const PAPER_PRODUCT: ProductCreate = { sku: "THERMAL-PAPER-80", name: "Thermal Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 };
+const CABLE_PRODUCT: ProductCreate = { sku: "ETHERNET-CAT6", name: "Cat6 Ethernet Cable", serialised: false, baseUnit: "each", vanMinimum: 5 };
+
 async function seedProducts(tx: Tx, section: DemoSection) {
-  await ensureProduct(tx, section, "PRIMARY", "product.paper", { sku: "DEMO-PAPER", name: "Demo Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 });
-  await ensureProduct(tx, section, "PRIMARY", "product.cable", { sku: "DEMO-CABLE", name: "Demo Ethernet Cable", serialised: false, baseUnit: "each", vanMinimum: 5 });
+  await ensureProduct(tx, section, "PRIMARY", "product.paper", PAPER_PRODUCT);
+  await ensureProduct(tx, section, "PRIMARY", "product.cable", CABLE_PRODUCT);
 }
 
 async function seedCustomers(tx: Tx, section: DemoSection) {
@@ -152,30 +155,44 @@ async function seedCustomers(tx: Tx, section: DemoSection) {
 async function seedFleet(tx: Tx, section: DemoSection) { await ensureVan(tx, section, "PRIMARY"); }
 
 async function seedInventory(tx: Tx, section: DemoSection, actor: string) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", { sku: "DEMO-PAPER", name: "Demo Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 });
+  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
   const van = await ensureVan(tx, section, "DEPENDENCY");
   const existing = await tx.demoRecord.findUnique({ where: { fixtureKey: "inventory.paper.opening" } });
   if (existing) { await claim(tx, existing.id, section, "PRIMARY"); return; }
   await lockLocations(tx, [van.locationId]);
-  const movement = await moveStock(tx, { type: "OPENING_BALANCE", productId: product.id, condition: "WORKING", quantity: 25, to: { locationId: van.locationId }, performedBy: actor, note: "Settings demo fixture", operationKey: "demo:inventory:paper:opening:v1" });
+  const movement = await moveStock(tx, { type: "OPENING_BALANCE", productId: product.id, condition: "WORKING", quantity: 25, to: { locationId: van.locationId }, performedBy: actor, note: "Opening balance recorded from Settings", operationKey: "demo:inventory:paper:opening:v1" });
   await register(tx, "inventory.paper.balance", "STOCK_BALANCE", balanceId(van.locationId, product.id, "WORKING"), "25 working demo paper rolls", section, "PRIMARY");
   await register(tx, "inventory.paper.opening", "STOCK_MOVEMENT", movement.id, "Opening-balance movement", section, "PRIMARY");
 }
 
 async function seedDispatch(tx: Tx, section: DemoSection) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", { sku: "DEMO-PAPER", name: "Demo Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 });
+  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
   const branch = await ensureBranch(tx, section, "DEPENDENCY", "customer.downtown", "Downtown", "Central");
   const existing = await findFixture(tx, "dispatch.request");
-  if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); return; }
-  assertUniqueAvailable(await tx.job.findUnique({ where: { reference: "DEMO-REQ-001" } }), "request reference DEMO-REQ-001");
-  const job = await tx.job.create({ data: { reference: "DEMO-REQ-001", type: "DELIVERY", branchId: branch.id, requestedOn: new Date("2026-10-18T00:00:00.000Z"), notes: "Demo request created from Settings" } });
-  const item = await tx.jobItem.create({ data: { jobId: job.id, productId: product.id, quantity: 4 } });
-  await register(tx, "dispatch.request", "JOB", job.id, "Request DEMO-REQ-001", section, "PRIMARY");
-  await register(tx, "dispatch.request.paper", "JOB_ITEM", item.id, "Demo paper request line", section, "PRIMARY");
+  let job;
+  if (existing) {
+    await claim(tx, existing.record.id, section, "PRIMARY");
+    job = await tx.job.findUniqueOrThrow({ where: { id: existing.record.entityId } });
+    const conflict = await tx.job.findUnique({ where: { reference: "REQ-2026-1042" } });
+    if (conflict && conflict.id !== job.id) throw new AppError("CONFLICT", "A non-demo request already uses reference REQ-2026-1042. Nothing was changed.");
+    job = await tx.job.update({ where: { id: job.id }, data: { reference: "REQ-2026-1042", notes: "Deliver thermal paper to the Downtown branch." } });
+  } else {
+    assertUniqueAvailable(await tx.job.findUnique({ where: { reference: "REQ-2026-1042" } }), "request reference REQ-2026-1042");
+    job = await tx.job.create({ data: { reference: "REQ-2026-1042", type: "DELIVERY", branchId: branch.id, requestedOn: new Date("2026-10-18T00:00:00.000Z"), notes: "Deliver thermal paper to the Downtown branch." } });
+    await register(tx, "dispatch.request", "JOB", job.id, "Request REQ-2026-1042", section, "PRIMARY");
+  }
+  const itemFixture = await findFixture(tx, "dispatch.request.paper");
+  if (itemFixture) {
+    await claim(tx, itemFixture.record.id, section, "PRIMARY");
+    await tx.jobItem.update({ where: { id: itemFixture.record.entityId }, data: { productId: product.id, quantity: 4 } });
+  } else {
+    const item = await tx.jobItem.create({ data: { jobId: job.id, productId: product.id, quantity: 4 } });
+    await register(tx, "dispatch.request.paper", "JOB_ITEM", item.id, "Thermal paper request line", section, "PRIMARY");
+  }
 }
 
 async function seedRestocking(tx: Tx, section: DemoSection) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", { sku: "DEMO-PAPER", name: "Demo Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 });
+  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
   const van = await ensureVan(tx, section, "DEPENDENCY");
   const existing = await findFixture(tx, "restocking.job");
   if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); return; }
@@ -190,7 +207,13 @@ async function seedRestocking(tx: Tx, section: DemoSection) {
 type ProductCreate = Pick<Prisma.ProductCreateInput, "sku" | "name" | "serialised" | "baseUnit" | "packUnit" | "packSize" | "vanMinimum">;
 async function ensureProduct(tx: Tx, section: DemoSection, kind: DemoClaimKind, key: string, data: ProductCreate) {
   const fixture = await findFixture(tx, key);
-  if (fixture) { await claim(tx, fixture.record.id, section, kind); return tx.product.findUniqueOrThrow({ where: { id: fixture.record.entityId } }); }
+  if (fixture) {
+    await claim(tx, fixture.record.id, section, kind);
+    const product = await tx.product.findUniqueOrThrow({ where: { id: fixture.record.entityId } });
+    const conflictingSku = await tx.product.findUnique({ where: { sku: data.sku } });
+    if (conflictingSku && conflictingSku.id !== product.id) throw new AppError("CONFLICT", `A non-demo product already uses SKU ${data.sku}. Nothing was changed.`);
+    return tx.product.update({ where: { id: product.id }, data: { sku: data.sku, name: data.name } });
+  }
   assertUniqueAvailable(await tx.product.findUnique({ where: { sku: data.sku } }), `product SKU ${data.sku}`);
   const product = await tx.product.create({ data });
   await register(tx, key, "PRODUCT", product.id, data.name, section, kind);
@@ -200,16 +223,27 @@ async function ensureProduct(tx: Tx, section: DemoSection, kind: DemoClaimKind, 
 async function ensureBranch(tx: Tx, section: DemoSection, kind: DemoClaimKind, key: string, name: string, zone: string) {
   let customerFixture = await findFixture(tx, "customer.main");
   let customer;
-  if (customerFixture) customer = await tx.customer.findUniqueOrThrow({ where: { id: customerFixture.record.entityId } });
+  if (customerFixture) {
+    customer = await tx.customer.findUniqueOrThrow({ where: { id: customerFixture.record.entityId } });
+    const conflict = await tx.customer.findUnique({ where: { name: "Juniper Table Group" } });
+    if (conflict && conflict.id !== customer.id) throw new AppError("CONFLICT", "A non-demo customer already uses the name Juniper Table Group. Nothing was changed.");
+    customer = await tx.customer.update({ where: { id: customer.id }, data: { name: "Juniper Table Group" } });
+  }
   else {
-    assertUniqueAvailable(await tx.customer.findUnique({ where: { name: "Demo Hearth Cafe" } }), "customer name Demo Hearth Cafe");
-    customer = await tx.customer.create({ data: { name: "Demo Hearth Cafe" } });
-    await register(tx, "customer.main", "CUSTOMER", customer.id, "Demo Hearth Cafe", section, kind);
+    assertUniqueAvailable(await tx.customer.findUnique({ where: { name: "Juniper Table Group" } }), "customer name Juniper Table Group");
+    customer = await tx.customer.create({ data: { name: "Juniper Table Group" } });
+    await register(tx, "customer.main", "CUSTOMER", customer.id, "Juniper Table Group", section, kind);
     customerFixture = await findFixture(tx, "customer.main");
   }
   await claim(tx, customerFixture!.record.id, section, kind);
   const fixture = await findFixture(tx, key);
-  if (fixture) { await claim(tx, fixture.record.id, section, kind); return tx.branch.findUniqueOrThrow({ where: { id: fixture.record.entityId } }); }
+  if (fixture) {
+    await claim(tx, fixture.record.id, section, kind);
+    const branch = await tx.branch.findUniqueOrThrow({ where: { id: fixture.record.entityId } });
+    const conflict = await tx.branch.findUnique({ where: { customerId_name: { customerId: customer.id, name } } });
+    if (conflict && conflict.id !== branch.id) throw new AppError("CONFLICT", `A non-demo branch already uses ${name}. Nothing was changed.`);
+    return tx.branch.update({ where: { id: branch.id }, data: { customerId: customer.id, name, zone } });
+  }
   assertUniqueAvailable(await tx.branch.findUnique({ where: { customerId_name: { customerId: customer.id, name } } }), `branch ${name}`);
   const branch = await tx.branch.create({ data: { customerId: customer.id, name, zone } });
   await register(tx, key, "BRANCH", branch.id, `${name} branch`, section, kind);
@@ -221,15 +255,32 @@ async function ensureVan(tx: Tx, section: DemoSection, kind: DemoClaimKind) {
   if (existing) {
     await claim(tx, existing.record.id, section, kind);
     const van = await tx.van.findUniqueOrThrow({ where: { id: existing.record.entityId } });
-    for (const key of ["fleet.technician", "fleet.location"]) { const dep = await findFixture(tx, key); if (dep) await claim(tx, dep.record.id, section, kind); }
-    return van;
+    const technicianFixture = await findFixture(tx, "fleet.technician");
+    const locationFixture = await findFixture(tx, "fleet.location");
+    if (technicianFixture) {
+      await claim(tx, technicianFixture.record.id, section, kind);
+      const technician = await tx.technician.findUniqueOrThrow({ where: { id: technicianFixture.record.entityId } });
+      const conflict = await tx.technician.findUnique({ where: { name: "Dana Haddad" } });
+      if (conflict && conflict.id !== technician.id) throw new AppError("CONFLICT", "A non-demo technician already uses the name Dana Haddad. Nothing was changed.");
+      await tx.technician.update({ where: { id: technician.id }, data: { name: "Dana Haddad" } });
+    }
+    if (locationFixture) {
+      await claim(tx, locationFixture.record.id, section, kind);
+      const location = await tx.location.findUniqueOrThrow({ where: { id: locationFixture.record.entityId } });
+      const conflict = await tx.location.findUnique({ where: { name: "Van V-12" } });
+      if (conflict && conflict.id !== location.id) throw new AppError("CONFLICT", "A non-demo location already uses the name Van V-12. Nothing was changed.");
+      await tx.location.update({ where: { id: location.id }, data: { name: "Van V-12" } });
+    }
+    const conflict = await tx.van.findUnique({ where: { code: "V-12" } });
+    if (conflict && conflict.id !== van.id) throw new AppError("CONFLICT", "A non-demo van already uses code V-12. Nothing was changed.");
+    return tx.van.update({ where: { id: van.id }, data: { code: "V-12", plate: "38-24716" } });
   }
-  assertUniqueAvailable(await tx.van.findUnique({ where: { code: "DEMO-V1" } }), "van code DEMO-V1");
-  assertUniqueAvailable(await tx.technician.findUnique({ where: { name: "Demo Dana" } }), "technician name Demo Dana");
-  assertUniqueAvailable(await tx.location.findUnique({ where: { name: "Van DEMO-V1" } }), "location name Van DEMO-V1");
-  const technician = await tx.technician.create({ data: { name: "Demo Dana" } });
-  const location = await tx.location.create({ data: { kind: "VAN", name: "Van DEMO-V1" } });
-  const van = await tx.van.create({ data: { code: "DEMO-V1", plate: "DEMO-001", zone: "Central", currentTechnicianId: technician.id, locationId: location.id } });
+  assertUniqueAvailable(await tx.van.findUnique({ where: { code: "V-12" } }), "van code V-12");
+  assertUniqueAvailable(await tx.technician.findUnique({ where: { name: "Dana Haddad" } }), "technician name Dana Haddad");
+  assertUniqueAvailable(await tx.location.findUnique({ where: { name: "Van V-12" } }), "location name Van V-12");
+  const technician = await tx.technician.create({ data: { name: "Dana Haddad" } });
+  const location = await tx.location.create({ data: { kind: "VAN", name: "Van V-12" } });
+  const van = await tx.van.create({ data: { code: "V-12", plate: "38-24716", zone: "Central", currentTechnicianId: technician.id, locationId: location.id } });
   await register(tx, "fleet.technician", "TECHNICIAN", technician.id, "Demo technician Dana", section, kind);
   await register(tx, "fleet.location", "LOCATION", location.id, "Demo van stock location", section, kind);
   await register(tx, "fleet.van", "VAN", van.id, "Demo van DEMO-V1", section, kind);

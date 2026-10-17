@@ -20,10 +20,26 @@ describe("Settings demo data", () => {
       expect(await prisma.demoRecordClaim.count()).toBe(firstClaims);
     }
     expect(await prisma.stockMovement.count({ where: { operationKey: "demo:inventory:paper:opening:v1" } })).toBe(1);
-    expect(await prisma.job.count({ where: { reference: "DEMO-REQ-001" } })).toBe(1);
+    expect(await prisma.job.count({ where: { reference: "REQ-2026-1042" } })).toBe(1);
+    expect(await prisma.product.findUnique({ where: { sku: "THERMAL-PAPER-80" } })).toMatchObject({ name: "Thermal Paper Rolls" });
+    expect(await prisma.product.findUnique({ where: { sku: "ETHERNET-CAT6" } })).toMatchObject({ name: "Cat6 Ethernet Cable" });
+    expect(await prisma.customer.findUnique({ where: { name: "Juniper Table Group" } })).not.toBeNull();
+    expect(await prisma.van.findUnique({ where: { code: "V-12" } })).not.toBeNull();
     expect((await demoDataOverview()).sections.map((section) => section.section)).toEqual([
       "PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING",
     ]);
+  });
+
+  it("updates only tracked legacy fixture values in place when seeding again", async () => {
+    await seedDemoSection("PRODUCTS", actor);
+    const paper = await prisma.product.findUniqueOrThrow({ where: { sku: "THERMAL-PAPER-80" } });
+    const other = await prisma.product.create({ data: { sku: "REAL-KEEP", name: "Real product", serialised: false } });
+    await prisma.product.update({ where: { id: paper.id }, data: { sku: "DEMO-PAPER", name: "Demo Paper Rolls" } });
+
+    await seedDemoSection("PRODUCTS", actor);
+
+    expect(await prisma.product.findUnique({ where: { id: paper.id } })).toMatchObject({ sku: "THERMAL-PAPER-80", name: "Thermal Paper Rolls" });
+    expect(await prisma.product.findUnique({ where: { id: other.id } })).toMatchObject({ sku: "REAL-KEEP", name: "Real product" });
   });
 
   it("tracks dependencies by section and preserves a shared product during selective clear", async () => {
@@ -35,7 +51,7 @@ describe("Settings demo data", () => {
     await clearDemoSection("INVENTORY");
 
     expect(await prisma.product.findUnique({ where: { id: paperRecord.entityId } })).not.toBeNull();
-    expect(await prisma.van.findUnique({ where: { code: "DEMO-V1" } })).toBeNull();
+    expect(await prisma.van.findUnique({ where: { code: "V-12" } })).toBeNull();
     expect(await prisma.stockMovement.findUnique({ where: { operationKey: "demo:inventory:paper:opening:v1" } })).toBeNull();
     expect((await demoDataOverview()).sections.find((section) => section.section === "PRODUCTS")?.seeded.length).toBeGreaterThan(0);
   });
@@ -49,14 +65,15 @@ describe("Settings demo data", () => {
 
     expect(await prisma.product.findUnique({ where: { id: real.id } })).toMatchObject({ name: "Real product" });
     expect(await prisma.importBatch.findUnique({ where: { id: imported.id } })).toMatchObject({ fileName: "existing-import.xlsx" });
-    expect(await prisma.product.count({ where: { sku: { startsWith: "DEMO-" } } })).toBe(0);
+    expect(await prisma.product.findUnique({ where: { sku: "THERMAL-PAPER-80" } })).toBeNull();
+    expect(await prisma.product.findUnique({ where: { sku: "ETHERNET-CAT6" } })).toBeNull();
     expect(await prisma.demoRecord.count()).toBe(0);
   });
 
   it("blocks clearing changed demo stock and preserves its non-demo movement history", async () => {
     await seedDemoSection("INVENTORY", actor);
-    const van = await prisma.van.findUniqueOrThrow({ where: { code: "DEMO-V1" } });
-    const product = await prisma.product.findUniqueOrThrow({ where: { sku: "DEMO-PAPER" } });
+    const van = await prisma.van.findUniqueOrThrow({ where: { code: "V-12" } });
+    const product = await prisma.product.findUniqueOrThrow({ where: { sku: "THERMAL-PAPER-80" } });
     await runInTransaction(async (tx) => {
       await lockLocations(tx, [van.locationId]);
       await moveStock(tx, { type: "OPENING_BALANCE", productId: product.id, condition: "WORKING", quantity: 2, to: { locationId: van.locationId }, performedBy: "real operator", note: "Operational count received outside demo settings" });
