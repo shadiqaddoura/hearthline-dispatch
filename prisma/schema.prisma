@@ -559,3 +559,63 @@ model LoginThrottle {
   @@index([expiresAt])
   @@map("login_throttles")
 }
+
+// Demo fixtures are identified only through these provenance rows. Operational
+// names, SKUs and references are never used to decide whether data is disposable.
+enum DemoSection {
+  PRODUCTS
+  CUSTOMERS
+  FLEET
+  INVENTORY
+  DISPATCH
+  RESTOCKING
+  IMPORTS
+}
+
+enum DemoEntityType {
+  PRODUCT
+  CUSTOMER
+  BRANCH
+  TECHNICIAN
+  LOCATION
+  VAN
+  STOCK_BALANCE
+  STOCK_MOVEMENT
+  JOB
+  JOB_ITEM
+  RESTOCK_JOB
+  RESTOCK_ITEM
+  IMPORT_BATCH
+  IMPORT_SOURCE_ROW
+  IMPORT_ISSUE
+}
+
+enum DemoClaimKind {
+  PRIMARY
+  DEPENDENCY
+}
+
+model DemoRecord {
+  id         String         @id @default(cuid())
+  fixtureKey String         @unique
+  entityType DemoEntityType
+  entityId   String
+  label      String
+  createdAt  DateTime       @default(now())
+  claims     DemoRecordClaim[]
+
+  @@unique([entityType, entityId])
+  @@index([entityType])
+  @@map("demo_records")
+}
+
+model DemoRecordClaim {
+  recordId String
+  section  DemoSection
+  kind     DemoClaimKind
+  record   DemoRecord    @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@id([recordId, section])
+  @@index([section])
+  @@map("demo_record_claims")
+}

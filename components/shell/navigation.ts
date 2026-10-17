@@ -88,8 +88,18 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
 
 export const NAV_SECTIONS = ["Operations", "Stock and Configuration", "Data"] as const;
 
+const SETTINGS_DESTINATION: AvailableDestination = {
+  value: "settings",
+  label: "Settings",
+  icon: TagMultipleRegular,
+  section: "Data",
+  status: "available",
+  href: "/settings",
+};
+
 /** The built destination whose route contains this path, if any. */
 export function destinationForPath(pathname: string): AvailableDestination | undefined {
+  if (pathname === SETTINGS_DESTINATION.href || pathname.startsWith(`${SETTINGS_DESTINATION.href}/`)) return SETTINGS_DESTINATION;
   return NAV_DESTINATIONS.find(
     (d): d is AvailableDestination =>
       d.status === "available" && (pathname === d.href || pathname.startsWith(`${d.href}/`)),

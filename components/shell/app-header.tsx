@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthUser } from "./auth-user-provider";
 import {
   Avatar,
@@ -20,7 +21,7 @@ import {
   tokens,
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import { SignOutRegular } from "@fluentui/react-icons";
+import { SettingsRegular, SignOutRegular } from "@fluentui/react-icons";
 import { SIDEBAR_ID } from "./app-sidebar";
 
 const useStyles = makeStyles({
@@ -60,6 +61,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ title, navOpen, onToggleNav }: AppHeaderProps) {
   const styles = useStyles();
+  const router = useRouter();
   const user = useAuthUser();
   const [signingOut, setSigningOut] = useState(false);
   const [logoutFailed, setLogoutFailed] = useState(false);
@@ -102,6 +104,10 @@ export function AppHeader({ title, navOpen, onToggleNav }: AppHeaderProps) {
                   {user.email}
                 </Text>
               </MenuGroup>
+              <MenuDivider />
+              <MenuItem icon={<SettingsRegular />} onClick={() => router.push("/settings")}>
+                Settings
+              </MenuItem>
               <MenuDivider />
               <MenuItem icon={<SignOutRegular />} disabled={signingOut} onClick={() => void signOut()}>
                 {signingOut ? "Signing out…" : "Sign out"}
