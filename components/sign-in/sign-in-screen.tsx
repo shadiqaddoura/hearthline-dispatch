@@ -73,8 +73,6 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: tokens.spacingVerticalM,
-    borderTop: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStroke2}`,
-    paddingTop: tokens.spacingVerticalXL,
   },
   account: {
     minWidth: 0,
@@ -149,7 +147,6 @@ export function SignInScreen({ demoEnabled = false, demoAccounts = [] }: { demoE
 
           {demoEnabled && <section className={styles.demo} aria-labelledby="demo-accounts-heading">
             <Text as="h2" id="demo-accounts-heading" size={400} weight="semibold" className={styles.sectionTitle}>Demo accounts</Text>
-            <Text size={200} className={styles.tagline}>Use these credentials in the form above. Both accounts have full access.</Text>
             {demoAccounts.length === 0 && <Text>No demo accounts are available. Complete account setup first.</Text>}
             {demoAccounts.map((account) => {
               const label = account.role === "ADMIN" ? "Admin" : "Operations";

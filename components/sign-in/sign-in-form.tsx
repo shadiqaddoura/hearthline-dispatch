@@ -72,7 +72,7 @@ export function SignInForm({ onSignIn, onSignedIn }: SignInFormProps) {
   };
 
   return (
-    <form className={styles.form} onSubmit={submit} noValidate aria-busy={pending} aria-label="Sign in">
+    <form className={styles.form} onSubmit={submit} noValidate aria-busy={pending} aria-label="Sign in" autoComplete="off">
       {formError && (
         <MessageBar intent="error" layout="multiline">
           <MessageBarBody>
@@ -86,7 +86,7 @@ export function SignInForm({ onSignIn, onSignedIn }: SignInFormProps) {
           ref={emailRef}
           type="email"
           name="email"
-          autoComplete="username"
+          autoComplete="off"
           value={values.email}
           onChange={(_, data) => update("email", data.value)}
           readOnly={pending}
@@ -98,7 +98,7 @@ export function SignInForm({ onSignIn, onSignedIn }: SignInFormProps) {
           ref={passwordRef}
           type={passwordVisible ? "text" : "password"}
           name="password"
-          autoComplete="current-password"
+          autoComplete="off"
           value={values.password}
           onChange={(_, data) => update("password", data.value)}
           readOnly={pending}
