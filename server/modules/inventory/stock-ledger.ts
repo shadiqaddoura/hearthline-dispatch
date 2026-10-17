@@ -34,6 +34,7 @@ export interface MovementInput {
   restockJobId?: string;
   correctionId?: string;
   importRowId?: string;
+  operationKey?: string;
 }
 
 export async function moveStock(tx: Tx, input: MovementInput) {
@@ -76,6 +77,7 @@ export async function moveStock(tx: Tx, input: MovementInput) {
       restockJobId: input.restockJobId,
       correctionId: input.correctionId,
       importRowId: input.importRowId,
+      operationKey: input.operationKey,
       serials,
       performedBy: input.performedBy,
       note: input.note,
@@ -156,7 +158,7 @@ async function reconcileUnitsToCount(tx: Tx, sku: string, input: CountInput) {
     throw new AppError(
       "CONFLICT",
       `Counted ${input.countedQuantity} ${sku} but ${identified.length} here have recorded serials; ` +
-        "transfer or write off the specific serials first, then correct the count",
+        "the missing-device reporting and recovery workflow is not available here; no inventory was changed",
       { countedQuantity: input.countedQuantity, serials: identified.map((u) => u.serialNumber) },
     );
   }

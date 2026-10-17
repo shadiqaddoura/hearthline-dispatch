@@ -192,6 +192,8 @@ model StockMovement {
   restockJobId   String?
   correctionId   String?
   importRowId    String?
+  /** Request key for retry-safe operator receipts. */
+  operationKey   String?           @unique
   serials        String[]
   performedBy    String
   note           String?

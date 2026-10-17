@@ -58,7 +58,8 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     label: "Inventory",
     icon: bundleIcon(BoxMultipleFilled, BoxMultipleRegular),
     section: "Stock",
-    status: "planned",
+    status: "available",
+    href: "/inventory",
   },
   {
     value: "products",
