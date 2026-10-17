@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, makeStyles, mergeClasses, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, tokens } from "@fluentui/react-components";
+import { Badge, Button, makeStyles, mergeClasses, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, Tooltip, tokens } from "@fluentui/react-components";
 import { BoxMultipleRegular, BoxSearchRegular, VehicleTruckProfileRegular } from "@fluentui/react-icons";
 import type { StockLineDto } from "@/lib/contracts/inventory";
 import { EmptyMessage } from "@/components/products/product-states";
@@ -53,6 +53,13 @@ const useStyles = makeStyles({
   dataCell: { paddingInline: tokens.spacingHorizontalS, verticalAlign: "middle" },
   unitCell: { textAlign: "left" },
   numericCell: { textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" },
+  verificationTrigger: {
+    display: "inline-flex", maxWidth: "100%", borderRadius: tokens.borderRadiusSmall,
+    "&:focus-visible": {
+      outlineStyle: "solid", outlineWidth: "2px", outlineColor: tokens.colorStrokeFocus2,
+      outlineOffset: "2px",
+    },
+  },
   productCell: { minWidth: 0, textAlign: "left" },
   productButton: {
     width: "100%", minWidth: 0, flexDirection: "column", alignItems: "flex-start",
@@ -135,7 +142,7 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
       <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
       <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
-      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span><VerificationCount count={row.line.needsVerification} /></TableCell>
     </TableRow>),
   ]);
   if (tableRows.length === 0 && emptyState) {
@@ -159,6 +166,18 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       </TableRow></TableHeader>
       <TableBody>{tableRows}</TableBody>
     </Table>
+}
+
+function VerificationCount({ count }: { count: number | null }) {
+  const styles = useStyles();
+  if (count === null) return <>—</>;
+  if (count <= 0) return <>{count.toLocaleString("en")}</>;
+  const description = `${count.toLocaleString("en")} unit${count === 1 ? "" : "s"} ${count === 1 ? "needs" : "need"} serial verification.`;
+  return <Tooltip content={description} relationship="description">
+    <span className={styles.verificationTrigger} tabIndex={0}>
+      <Badge appearance="outline" color="danger" shape="rounded" size="small">{count.toLocaleString("en")}</Badge>
+    </span>
+  </Tooltip>;
 }
 
 function formatLocationName(kind: InventoryRow["kind"], name: string) {
