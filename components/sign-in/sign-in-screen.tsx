@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
@@ -9,7 +8,6 @@ import type { DemoAccount } from "@/lib/auth/demo";
 import { BrandMark } from "@/components/brand/brand-mark";
 import { FocusManager } from "@/components/theme/focus-manager";
 import { signIn } from "@/lib/auth/sign-in";
-import maintenancePhoto from "@/public/replacing-paper-maintenance-guy.png";
 import { SignInForm } from "./sign-in-form";
 
 const useStyles = makeStyles({
@@ -24,43 +22,20 @@ const useStyles = makeStyles({
     "@media (max-width: 959px)": { padding: "clamp(16px, 3vw, 28px)" },
   },
   card: {
-    width: "min(100%, 960px)",
-    minHeight: "min(600px, calc(100dvh - 112px))",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    width: "min(100%, 520px)",
+    display: "flex",
     overflow: "hidden",
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow16,
-    "@media (max-width: 959px)": {
-      width: "min(100%, 680px)",
-      minHeight: 0,
-      gridTemplateColumns: "minmax(0, 1fr)",
-    },
-  },
-  photo: {
-    position: "relative",
-    height: "100%",
-    minHeight: "min(600px, calc(100dvh - 112px))",
-    minWidth: 0,
-    margin: 0,
-    overflow: "hidden",
-    backgroundColor: "#153632",
-    "::after": {
-      content: '""',
-      position: "absolute",
-      inset: 0,
-      backgroundImage: "linear-gradient(180deg, rgba(10, 121, 118, 0.18), rgba(5, 47, 46, 0.46))",
-      pointerEvents: "none",
-    },
-    "@media (max-width: 959px)": { height: "clamp(150px, 22vw, 230px)", minHeight: 0 },
   },
   panel: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     minWidth: 0,
-    padding: "48px clamp(28px, 4vw, 56px)",
-    "@media (max-width: 479px)": { padding: "28px 20px" },
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "40px clamp(20px, 6vw, 40px)",
   },
   content: { width: "100%", maxWidth: "440px", display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXXL },
   brand: { display: "flex", flexDirection: "row", alignItems: "center", gap: tokens.spacingHorizontalL, minWidth: 0 },
@@ -119,17 +94,6 @@ export function SignInScreen({ demoEnabled = false, demoAccounts = [] }: { demoE
     <div className={styles.page}>
       <FocusManager />
       <div className={styles.card}>
-        <figure className={styles.photo}>
-          <Image
-            src={maintenancePhoto}
-            alt="Field technician replacing a receipt printer paper roll at a restaurant counter."
-            fill
-            sizes="(max-width: 959px) 100vw, 560px"
-            style={{ objectFit: "cover", objectPosition: "center" }}
-            placeholder="blur"
-            preload
-          />
-        </figure>
         <main className={styles.panel}>
           <div className={styles.content}>
           <header className={styles.brand}>
