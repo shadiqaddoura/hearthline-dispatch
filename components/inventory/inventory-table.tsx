@@ -10,28 +10,45 @@ export type InventoryEmptyState = "locations" | "recorded" | "matching";
 
 const useStyles = makeStyles({
   table: { width: "100%", minWidth: 0, tableLayout: "fixed" },
-  productColumn: { width: "34%" },
+  productColumn: { width: "29%" },
   unitColumn: { width: "8%" },
-  quantityColumn: { width: "11%" },
-  availableColumn: { width: "12%" },
-  verificationColumn: { width: "13%" },
+  workingColumn: { width: "14%" },
+  reservedColumn: { width: "9%" },
+  availableColumn: { width: "10%" },
+  brokenColumn: { width: "9%" },
+  verificationColumn: { width: "21%" },
   locationRow: { backgroundColor: tokens.colorNeutralBackground2 },
   locationHeading: { paddingBlock: tokens.spacingVerticalS, fontWeight: tokens.fontWeightSemibold },
+  headerCell: {
+    paddingInline: tokens.spacingHorizontalS,
+    verticalAlign: "middle",
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+  },
   numericHeader: {
-    paddingInline: tokens.spacingHorizontalXS, textAlign: "right", verticalAlign: "bottom",
-    whiteSpace: "normal", overflowWrap: "anywhere",
+    textAlign: "right",
   },
   numericHeaderButton: {
     width: "100%", minWidth: 0, justifyContent: "flex-end", textAlign: "right",
-    whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: tokens.lineHeightBase200,
+    paddingInline: 0, whiteSpace: "normal", overflowWrap: "anywhere",
+    fontSize: tokens.fontSizeBase200, fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200,
   },
-  numericCell: { paddingInline: tokens.spacingHorizontalXS, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" },
-  verificationHeader: { paddingInlineEnd: tokens.spacingHorizontalL },
-  verificationCell: { paddingInlineEnd: tokens.spacingHorizontalL },
-  productCell: { minWidth: 0 },
+  productHeaderButton: {
+    minWidth: 0, justifyContent: "flex-start", textAlign: "left", paddingInline: 0,
+    fontSize: tokens.fontSizeBase200, fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200, whiteSpace: "normal", overflowWrap: "anywhere",
+  },
+  dataCell: { paddingInline: tokens.spacingHorizontalS, verticalAlign: "middle" },
+  unitCell: { textAlign: "left" },
+  numericCell: { textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" },
+  productCell: { minWidth: 0, textAlign: "left" },
   productButton: {
     width: "100%", minWidth: 0, flexDirection: "column", alignItems: "flex-start",
-    justifyContent: "center", textAlign: "left", whiteSpace: "normal",
+    justifyContent: "center", textAlign: "left", whiteSpace: "normal", paddingInline: 0,
   },
   productName: { display: "block", overflowWrap: "anywhere" },
   sku: { display: "block", fontFamily: tokens.fontFamilyMonospace, color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
@@ -58,6 +75,7 @@ const useStyles = makeStyles({
         minWidth: 0, paddingInline: tokens.spacingHorizontalXS,
         whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "left",
       },
+      "& .inventory-product-row > .inventory-numeric-cell": { textAlign: "right" },
       "& .inventory-product-cell": { gridColumn: "1 / -1" },
       "& .inventory-location-row": { display: "block" },
       "& .inventory-location-row > *": { display: "block", width: "100%" },
@@ -75,8 +93,8 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
 }) {
   const styles = useStyles();
   const header = (label: string, key: "product" | "working" | "available", numeric = false) => (
-    <TableHeaderCell className={numeric ? styles.numericHeader : undefined} aria-sort={sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-      <Button className={numeric ? styles.numericHeaderButton : undefined} appearance="subtle" size="small" onClick={() => onSort(key)}>{label}{sort.key === key ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</Button>
+    <TableHeaderCell className={mergeClasses(styles.headerCell, numeric && styles.numericHeader)} aria-sort={sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+      <Button className={numeric ? styles.numericHeaderButton : styles.productHeaderButton} appearance="subtle" size="small" onClick={() => onSort(key)}>{label}{sort.key === key ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</Button>
     </TableHeaderCell>
   );
   const groups = new Map<string, InventoryRow[]>();
@@ -100,13 +118,13 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       </TableHeaderCell>
     </TableRow>,
     ...group.rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`} className="inventory-product-row">
-      <TableCell className={mergeClasses(styles.productCell, "inventory-product-cell")} data-label="Product / SKU"><span className={styles.mobileHeaderLabel}>Product / SKU</span><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
-      <TableCell data-label="Unit"><span className={styles.mobileHeaderLabel}>Unit</span>{row.line.baseUnit}</TableCell>
-      <TableCell className={styles.numericCell} data-label="Working physical"><span className={styles.mobileHeaderLabel}>Working physical</span><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
-      <TableCell className={styles.numericCell} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
-      <TableCell className={styles.numericCell} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
-      <TableCell className={styles.numericCell} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
-      <TableCell className={mergeClasses(styles.numericCell, styles.verificationCell)} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.productCell, "inventory-product-cell")} data-label="Product / SKU"><span className={styles.mobileHeaderLabel}>Product / SKU</span><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.unitCell)} data-label="Unit"><span className={styles.mobileHeaderLabel}>Unit</span>{row.line.baseUnit}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Working physical"><span className={styles.mobileHeaderLabel}>Working physical</span><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.dataCell, styles.numericCell, "inventory-numeric-cell")} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
     </TableRow>),
   ]);
   if (tableRows.length === 0 && emptyState) {
@@ -116,17 +134,17 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       <colgroup>
         <col className={styles.productColumn} />
         <col className={styles.unitColumn} />
-        <col className={styles.quantityColumn} />
-        <col className={styles.quantityColumn} />
+        <col className={styles.workingColumn} />
+        <col className={styles.reservedColumn} />
         <col className={styles.availableColumn} />
-        <col className={styles.quantityColumn} />
+        <col className={styles.brokenColumn} />
         <col className={styles.verificationColumn} />
       </colgroup>
       <TableHeader><TableRow className="inventory-header-row">
         {header("Product / SKU", "product")}
-        <TableHeaderCell>Unit</TableHeaderCell>{header("Working physical", "working", true)}
-        <TableHeaderCell className={styles.numericHeader}><div>Reserved</div></TableHeaderCell>{header("Available", "available", true)}
-        <TableHeaderCell className={styles.numericHeader}><div>Broken</div></TableHeaderCell><TableHeaderCell className={mergeClasses(styles.numericHeader, styles.verificationHeader)}><div>Awaiting serial verification</div></TableHeaderCell>
+        <TableHeaderCell className={mergeClasses(styles.headerCell, styles.unitCell)}>Unit</TableHeaderCell>{header("Working physical", "working", true)}
+        <TableHeaderCell className={mergeClasses(styles.headerCell, styles.numericHeader)}>Reserved</TableHeaderCell>{header("Available", "available", true)}
+        <TableHeaderCell className={mergeClasses(styles.headerCell, styles.numericHeader)}>Broken</TableHeaderCell><TableHeaderCell className={mergeClasses(styles.headerCell, styles.numericHeader)}><div>Awaiting serial verification</div></TableHeaderCell>
       </TableRow></TableHeader>
       <TableBody>{tableRows}</TableBody>
     </Table>
