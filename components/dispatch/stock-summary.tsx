@@ -20,6 +20,7 @@ import { useMediaQuery } from "@/components/shell/use-media-query";
 import type { StockShortageDto } from "@/lib/contracts/dispatch";
 import type { StockLineDto } from "@/lib/contracts/inventory";
 import type { JobItemDto } from "@/lib/contracts/jobs";
+import { hasVisibleStock } from "@/components/inventory/has-visible-stock";
 
 const useStyles = makeStyles({
   table: { width: "100%" },
@@ -68,6 +69,7 @@ const useStyles = makeStyles({
  */
 export function StockTable({ lines, title, asOf }: { lines: StockLineDto[]; title: string; asOf?: string }) {
   const styles = useStyles();
+  const visibleLines = lines.filter(hasVisibleStock);
   const mobile = useMediaQuery("(max-width: 1023px)") ?? false;
   const quantities = (line: StockLineDto) =>
     [
@@ -96,7 +98,7 @@ export function StockTable({ lines, title, asOf }: { lines: StockLineDto[]; titl
       )}
       {mobile ? (
         <ul className={styles.cards} aria-label={title}>
-          {lines.map((line) => (
+          {visibleLines.map((line) => (
             <li key={line.productId} className={styles.item}>
               {product(line)}
               <dl className={styles.quantities}>
@@ -125,7 +127,7 @@ export function StockTable({ lines, title, asOf }: { lines: StockLineDto[]; titl
             </TableRow>
           </TableHeader>
           <TableBody>
-            {lines.map((line) => (
+            {visibleLines.map((line) => (
               <TableRow key={line.productId}>
                 <TableCell>{product(line)}</TableCell>
                 {quantities(line).map(([label, value]) => (
