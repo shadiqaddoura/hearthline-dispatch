@@ -76,11 +76,11 @@ export function ProductsError({ message, onRetry }: { message: string; onRetry: 
   );
 }
 
-function EmptyMessage({ icon, title, children, action }: { icon: ReactNode; title: string; children: ReactNode; action?: ReactNode }) {
+export function EmptyMessage({ icon, title, children, action, minHeight }: { icon: ReactNode; title: string; children: ReactNode; action?: ReactNode; minHeight?: number }) {
   const styles = useStyles();
   return (
-    <div className={styles.empty}>
-      <span className={styles.emptyIcon} aria-hidden>
+    <div className={styles.empty} style={minHeight ? { minHeight, boxSizing: "border-box", justifyContent: "center" } : undefined}>
+      <span className={styles.emptyIcon} aria-hidden="true">
         {icon}
       </span>
       <Text as="h2" size={400} weight="semibold">

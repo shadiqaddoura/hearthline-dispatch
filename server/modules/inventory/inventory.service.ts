@@ -7,6 +7,9 @@ import { refreshBlockingReasons } from "@/server/modules/dispatch/dispatch.servi
 import type {
   CorrectStockRequest,
   EquipmentUnitDto,
+  InventoryDetailDto,
+  InventoryLocationDto,
+  ReceiveStockRequest,
   LocationStockDto,
   StockCorrectionDto,
   StockMovementDto,
@@ -17,6 +20,7 @@ import type { StockMovement } from "@/generated/prisma/client";
 import { assignableQuantity } from "./availability";
 import { buildStockLines, getBalance, loadStockFigures } from "./inventory.repository";
 import { applyCount, moveStock } from "./stock-ledger";
+import { isRetryableConflict } from "@/server/db/transaction";
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +41,63 @@ export async function getVanStock(vanId: string): Promise<LocationStockDto> {
   return getLocationStock(van.locationId);
 }
 
+/** All counted locations. Hub locations are shown as receipt sources; their shelf stock is not tracked. */
+export async function listInventoryLocations(): Promise<InventoryLocationDto[]> {
+  const locations = await prisma.location.findMany({
+    include: { van: true },
+    orderBy: { name: "asc" },
+  });
+  return Promise.all(locations.map(async (location) => ({
+    locationId: location.id,
+    locationName: location.name,
+    kind: location.kind,
+    vanId: location.van?.id ?? null,
+    lines: location.kind === "VAN" ? await buildStockLines(prisma, location.id) : [],
+  })));
+}
+
+export async function getInventoryDetail(locationId: string, productId: string): Promise<InventoryDetailDto> {
+  const location = await prisma.location.findUnique({ where: { id: locationId }, select: { id: true, kind: true } });
+  if (!location) throw notFound("Location", locationId);
+  if (location.kind !== "VAN") throw invalidState("Inventory details are available for counted van locations only");
+  await requireProduct(prisma, productId);
+  const [units, reservations, movements] = await Promise.all([
+    prisma.equipmentUnit.findMany({
+      where: { locationId, productId, status: "IN_STOCK" },
+      orderBy: [{ condition: "asc" }, { verification: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.reservation.findMany({
+      where: { locationId, productId },
+      include: { job: { include: { branch: { include: { customer: true } } } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    listMovements({ locationId, productId, limit: 100 }),
+  ]);
+  return {
+    locationId,
+    productId,
+    units: units.map((unit) => ({
+      id: unit.id,
+      productId: unit.productId,
+      serialNumber: unit.serialNumber,
+      verification: unit.verification,
+      condition: unit.condition,
+      locationId: unit.locationId,
+      verifiedAt: unit.verifiedAt?.toISOString() ?? null,
+      verifiedBy: unit.verifiedBy,
+    })),
+    reservations: reservations.map((reservation) => ({
+      id: reservation.id,
+      jobReference: reservation.job.reference,
+      customer: reservation.job.branch.customer.name,
+      branch: reservation.job.branch.name,
+      quantity: reservation.quantity,
+      status: reservation.status,
+    })),
+    movements,
+  };
+}
+
 export async function listMovements(filter: { locationId?: string; productId?: string; limit?: number }) {
   const location = filter.locationId;
   const movements = await prisma.stockMovement.findMany({
@@ -51,6 +112,48 @@ export async function listMovements(filter: { locationId?: string; productId?: s
 }
 
 // ─── Writes ─────────────────────────────────────────────────────────────────
+
+/** Receives stock through the hub endpoint using the shared stock ledger. */
+export async function receiveStock(input: ReceiveStockRequest): Promise<StockMovementDto> {
+  const previous = await prisma.stockMovement.findUnique({ where: { operationKey: input.operationKey } });
+  if (previous) return matchReceipt(previous, input);
+  try {
+    const movement = await runInTransaction(async (tx) => {
+      const [location, hub] = await Promise.all([
+        tx.location.findUnique({ where: { id: input.locationId } }),
+        tx.location.findFirst({ where: { kind: "HUB" } }),
+      ]);
+      if (!location) throw notFound("Location", input.locationId);
+      if (location.kind !== "VAN") throw invalidState("Receipts can only be added to a counted van location");
+      if (!hub) throw invalidState("No warehouse location is configured for receipts");
+      await requireProduct(tx, input.productId);
+      await lockLocations(tx, [location.id]);
+      const received = await moveStock(tx, {
+        type: "RESTOCK_COLLECTION",
+        productId: input.productId,
+        condition: input.condition,
+        quantity: input.quantity,
+        from: { locationId: hub.id },
+        to: { locationId: location.id },
+        serials: input.serials,
+        performedBy: input.performedBy,
+        note: input.note,
+        operationKey: input.operationKey,
+      });
+      await recalculateRestockForLocations(tx, [location.id]);
+      return received;
+    });
+    await refreshBlockingReasons();
+    return toMovementDto(movement);
+  } catch (error) {
+    // Concurrent repeat with the same operation key: the unique index rolls back
+    // the losing transaction, then the committed movement is returned to the caller.
+    const committed = await prisma.stockMovement.findUnique({ where: { operationKey: input.operationKey } });
+    if (committed) return matchReceipt(committed, input);
+    if (isRetryableConflict(error)) throw error;
+    throw error;
+  }
+}
 
 /**
  * Moves stock between two places in one movement that records both ends.
@@ -233,4 +336,18 @@ function toCorrectionDto(c: {
   correctedAt: Date;
 }): StockCorrectionDto {
   return { ...c, correctedAt: c.correctedAt.toISOString() };
+}
+
+function matchReceipt(movement: StockMovement, input: ReceiveStockRequest): StockMovementDto {
+  const sameSerials = movement.serials.length === (input.serials ?? []).length &&
+    movement.serials.every((serial, index) => serial === (input.serials ?? [])[index]);
+  if (
+    movement.type !== "RESTOCK_COLLECTION" || movement.toLocationId !== input.locationId ||
+    movement.productId !== input.productId || movement.condition !== input.condition ||
+    movement.quantity !== input.quantity || movement.performedBy !== input.performedBy ||
+    movement.note !== input.note || !sameSerials
+  ) {
+    throw new AppError("CONFLICT", "This receipt key was already used for a different stock operation; refresh inventory and start a new receipt");
+  }
+  return toMovementDto(movement);
 }

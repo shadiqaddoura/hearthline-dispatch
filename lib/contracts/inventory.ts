@@ -21,6 +21,25 @@ export const transferStockRequest = z
 
 export type TransferStockRequest = z.infer<typeof transferStockRequest>;
 
+/** A one-time receipt into a tracked van location. The operation key makes retries safe. */
+export const receiveStockRequest = z
+  .object({
+    operationKey: z.uuid(),
+    locationId: idSchema,
+    productId: idSchema,
+    quantity: positiveIntSchema,
+    condition: z.enum(StockCondition).default("WORKING"),
+    serials: serialsSchema,
+    performedBy: actorSchema,
+    note: z.string().trim().min(3, "A reason or reference is required").max(500),
+  })
+  .refine((t) => !t.serials || t.serials.length <= t.quantity, {
+    message: "There cannot be more serials than units received",
+    path: ["serials"],
+  });
+
+export type ReceiveStockRequest = z.infer<typeof receiveStockRequest>;
+
 export const correctStockRequest = z.object({
   locationId: idSchema,
   productId: idSchema,
@@ -106,4 +125,29 @@ export interface EquipmentUnitDto {
   verification: "VERIFIED" | "NEEDS_VERIFICATION";
   condition: StockCondition;
   locationId: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+}
+
+export interface InventoryLocationDto {
+  locationId: string;
+  locationName: string;
+  kind: "VAN" | "HUB";
+  vanId: string | null;
+  lines: StockLineDto[];
+}
+
+export interface InventoryDetailDto {
+  locationId: string;
+  productId: string;
+  units: EquipmentUnitDto[];
+  reservations: {
+    id: string;
+    jobReference: string;
+    customer: string;
+    branch: string;
+    quantity: number;
+    status: "ACTIVE" | "RELEASED" | "CONSUMED";
+  }[];
+  movements: StockMovementDto[];
 }
