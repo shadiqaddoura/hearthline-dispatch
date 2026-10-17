@@ -7,6 +7,7 @@ import type { InventoryLocationDto } from "@/lib/contracts/inventory";
 import type { StockCondition } from "@/generated/prisma/enums";
 import { inventoryApi } from "@/lib/api/inventory";
 import { FleetSheet } from "@/components/fleet/fleet-sheet";
+import { FleetConfirmation } from "@/components/fleet/fleet-confirmation";
 import type { InventoryOperation } from "./inventory-details";
 import type { InventoryRow } from "./inventory-table";
 
@@ -52,12 +53,28 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
   const [problem, setProblem] = useState("");
   const [pending, setPending] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [discard, setDiscard] = useState(false);
   const busy = useRef(false);
   const operationKey = useRef<string | null>(null);
   const product = products.find((item) => item.id === productId) ?? null;
   const otherLocations = useMemo(() => locations.filter((location) => location.locationId !== locationId), [locations, locationId]);
   const close = () => {
-    if (dirty && !window.confirm("Discard the changes in this inventory operation?")) return;
+    if (pending) return;
+    if (dirty) { setDiscard(true); return; }
+    onClose();
+  };
+  const discardChanges = () => {
+    setProductId(row?.line.productId ?? "");
+    setLocationId(row?.locationId ?? locations.find((location) => location.kind === "VAN")?.locationId ?? "");
+    setDestinationId("");
+    setCondition("WORKING");
+    setQuantity(operation === "correct" ? String(row?.line.working ?? 0) : "1");
+    setSerials("");
+    setActor("");
+    setNote("");
+    setProblem("");
+    setDirty(false);
+    setDiscard(false);
     onClose();
   };
   const update = <T,>(setter: (value: T) => void) => (value: T) => { setter(value); setDirty(true); };
@@ -96,7 +113,8 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
   const showProduct = operation === "receive";
   const showLocation = operation === "receive";
   const showSerials = operation === "receive" || operation === "verify" || operation === "transfer";
-  return <FleetSheet title={operation ? TITLES[operation] : "Inventory operation"} open={active} onClose={close} busy={pending}
+  return <>
+    <FleetSheet title={operation ? TITLES[operation] : "Inventory operation"} open={active} onClose={close} busy={pending}
     className={styles.sheet} bodyClassName={styles.body} footerClassName={styles.footer}
     footer={<><Button onClick={close} disabled={pending}>Cancel</Button><Button appearance="primary" type="submit" form="inventory-operation-form" disabled={pending || !operation}>{pending ? <Spinner size="tiny" /> : TITLES[operation ?? "receive"]}</Button></>}>
     {operation && <form id="inventory-operation-form" className={styles.form} onSubmit={(event) => void submit(event)}>
@@ -118,5 +136,9 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
       {operation === "receive" && !product?.serialised && <MessageBar className={styles.message} intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products Catalog.</MessageBarBody></MessageBar>}
       {operation === "correct" && <MessageBar className={styles.message} intent="warning"><MessageBarBody>A count records what is physically present. Units with known serials cannot be silently written off. Imported negative balances are reconciled against the physical count, without creating units for the accounting difference. If the count is below known serialised units, use the separate missing-device reporting and recovery workflow; it is not implemented in Inventory.</MessageBarBody></MessageBar>}
     </form>}
-  </FleetSheet>;
+    </FleetSheet>
+    <FleetConfirmation open={discard} title="Discard unsaved changes?" onClose={() => setDiscard(false)} onConfirm={discardChanges} action="Discard changes" cancelLabel="Keep editing">
+      Your changes to this inventory operation will be lost.
+    </FleetConfirmation>
+  </>;
 }
