@@ -1,6 +1,5 @@
 "use client";
 
-import { Fragment } from "react";
 import { Button, makeStyles, mergeClasses, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, tokens } from "@fluentui/react-components";
 import { BoxMultipleRegular, BoxSearchRegular, VehicleTruckProfileRegular } from "@fluentui/react-icons";
 import type { StockLineDto } from "@/lib/contracts/inventory";
@@ -94,6 +93,25 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       return cmp * (sort.direction === "asc" ? 1 : -1);
     }),
   })).sort((a, b) => a.locationName.localeCompare(b.locationName));
+  const tableRows = sortedGroups.flatMap((group) => [
+    <TableRow key={`location:${group.rows[0].locationId}`} className={mergeClasses(styles.locationRow, "inventory-location-row")}>
+      <TableHeaderCell colSpan={7} className={styles.locationHeading}>
+        {group.kind === "VAN" ? `Van ${group.locationName}` : group.locationName}
+      </TableHeaderCell>
+    </TableRow>,
+    ...group.rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`} className="inventory-product-row">
+      <TableCell className={mergeClasses(styles.productCell, "inventory-product-cell")} data-label="Product / SKU"><span className={styles.mobileHeaderLabel}>Product / SKU</span><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
+      <TableCell data-label="Unit"><span className={styles.mobileHeaderLabel}>Unit</span>{row.line.baseUnit}</TableCell>
+      <TableCell className={styles.numericCell} data-label="Working physical"><span className={styles.mobileHeaderLabel}>Working physical</span><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
+      <TableCell className={styles.numericCell} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
+      <TableCell className={styles.numericCell} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
+      <TableCell className={styles.numericCell} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
+      <TableCell className={mergeClasses(styles.numericCell, styles.verificationCell)} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
+    </TableRow>),
+  ]);
+  if (tableRows.length === 0 && emptyState) {
+    tableRows.push(<TableRow key="empty-state"><TableCell colSpan={7} style={{ padding: 0, verticalAlign: "middle" }}><InventoryEmpty state={emptyState} onClearFilters={onClearFilters} /></TableCell></TableRow>);
+  }
   return <Table className={mergeClasses(styles.table, styles.mobileTable)} aria-label="Inventory stock by location">
       <colgroup>
         <col className={styles.productColumn} />
@@ -110,22 +128,7 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
         <TableHeaderCell className={styles.numericHeader}><div>Reserved</div></TableHeaderCell>{header("Available", "available", true)}
         <TableHeaderCell className={styles.numericHeader}><div>Broken</div></TableHeaderCell><TableHeaderCell className={mergeClasses(styles.numericHeader, styles.verificationHeader)}><div>Awaiting serial verification</div></TableHeaderCell>
       </TableRow></TableHeader>
-      <TableBody>{sortedGroups.length ? sortedGroups.map((group) => <Fragment key={group.rows[0].locationId}>
-        <TableRow key={`location:${group.rows[0].locationId}`} className={mergeClasses(styles.locationRow, "inventory-location-row")}>
-          <TableHeaderCell colSpan={7} className={styles.locationHeading}>
-            {group.kind === "VAN" ? `Van ${group.locationName}` : group.locationName}
-          </TableHeaderCell>
-        </TableRow>
-        {group.rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`} className="inventory-product-row">
-          <TableCell className={mergeClasses(styles.productCell, "inventory-product-cell")} data-label="Product / SKU"><span className={styles.mobileHeaderLabel}>Product / SKU</span><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
-          <TableCell data-label="Unit"><span className={styles.mobileHeaderLabel}>Unit</span>{row.line.baseUnit}</TableCell>
-          <TableCell className={styles.numericCell} data-label="Working physical"><span className={styles.mobileHeaderLabel}>Working physical</span><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
-          <TableCell className={styles.numericCell} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
-          <TableCell className={styles.numericCell} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
-          <TableCell className={styles.numericCell} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
-          <TableCell className={mergeClasses(styles.numericCell, styles.verificationCell)} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
-        </TableRow>)}
-      </Fragment>) : emptyState ? <TableRow><TableCell colSpan={7} style={{ padding: 0, verticalAlign: "middle" }}><InventoryEmpty state={emptyState} onClearFilters={onClearFilters} /></TableCell></TableRow> : null}</TableBody>
+      <TableBody>{tableRows}</TableBody>
     </Table>
 }
 

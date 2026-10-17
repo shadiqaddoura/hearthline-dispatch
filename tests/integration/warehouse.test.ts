@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/prisma";
-import { createWarehouse, deleteWarehouse } from "@/server/modules/inventory/warehouse.service";
+import { createWarehouse } from "@/server/modules/inventory/warehouse.service";
+import { deleteWarehouse } from "@/server/modules/inventory/warehouse-delete.service";
 import { correctStock, getInventoryDetail, listInventoryLocations, receiveStock, transferStock } from "@/server/modules/inventory/inventory.service";
 import { confirmRestockCollection, listRestockJobs, recalculateAllRestockJobs } from "@/server/modules/restocking/restock.service";
 import { getHubLocation } from "@/server/modules/fleet/fleet.repository";
