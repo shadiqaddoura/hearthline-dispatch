@@ -16,11 +16,10 @@ const stylesHook = makeStyles({
   description: { color: tokens.colorNeutralForeground2, maxWidth: "760px" },
   toolbar: { display: "flex", flexWrap: "wrap", alignItems: "end", gap: tokens.spacingHorizontalM },
   surface: { backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusLarge, boxShadow: tokens.shadow2, overflow: "hidden" },
-  tableHeading: { padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalL} 0` },
   locationActions: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalM },
 });
 
-type SortKey = "location" | "product" | "working" | "available";
+type SortKey = "product" | "working" | "available";
 
 export function InventoryView() {
   const styles = stylesHook();
@@ -29,7 +28,7 @@ export function InventoryView() {
   const [query, setQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [conditionFilter, setConditionFilter] = useState("ALL");
-  const [sortKey, setSortKey] = useState<SortKey>("location");
+  const [sortKey, setSortKey] = useState<SortKey>("product");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [selected, setSelected] = useState<InventoryRow | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -59,11 +58,8 @@ export function InventoryView() {
       const matchesLocation = locationFilter === "ALL" || row.locationId === locationFilter;
       const matchesCondition = conditionFilter === "ALL" || (conditionFilter === "WORKING" ? row.line.working !== 0 : row.line.broken !== 0);
       return matchesQuery && matchesLocation && matchesCondition;
-    }).sort((a, b) => {
-      const cmp = sortKey === "location" ? a.locationName.localeCompare(b.locationName) : sortKey === "product" ? a.line.name.localeCompare(b.line.name) : sortKey === "working" ? a.line.working - b.line.working : a.line.available - b.line.available;
-      return cmp * (direction === "asc" ? 1 : -1);
     });
-  }, [allRows, query, locationFilter, conditionFilter, sortKey, direction]);
+  }, [allRows, query, locationFilter, conditionFilter]);
   const hasVanLocations = (inventory.locations ?? []).length > 0;
   const warehouse = inventory.locations?.find((location) => location.kind === "HUB");
   const hasRecordedInventory = allRows.some(({ line }) => line.working !== 0 || line.broken !== 0 || line.reserved !== 0);
@@ -105,8 +101,7 @@ export function InventoryView() {
       <Button onClick={inventory.refresh}>Refresh</Button>
     </div>
     <section ref={surfaceRef} tabIndex={-1} className={styles.surface} aria-label="Inventory">
-      <Text as="h2" weight="semibold" className={styles.tableHeading}>Inventory by location and product</Text>
-      {inventory.loading && !inventory.locations ? <Spinner label="Loading inventory" /> : inventory.problem ? <div style={{ padding: 24 }}><Button onClick={() => { inventory.refresh(); surfaceRef.current?.focus(); }}>Retry inventory</Button></div> : <>{visibleRows.length > 0 && <Text size={200} style={{ paddingInline: 20 }}>{visibleRows.length} of {allRows.length} stock lines</Text>}<InventoryTable rows={visibleRows} emptyState={emptyState} onClearFilters={() => { setQuery(""); setLocationFilter("ALL"); setConditionFilter("ALL"); searchRef.current?.focus(); }} onSelect={(row) => { setSelected(row); setDetailsOpen(true); }} onSort={setSort} sort={{ key: sortKey, direction }} /></>}
+      {inventory.loading && !inventory.locations ? <Spinner label="Loading inventory" /> : inventory.problem ? <div style={{ padding: 24 }}><Button onClick={() => { inventory.refresh(); surfaceRef.current?.focus(); }}>Retry inventory</Button></div> : <InventoryTable rows={visibleRows} emptyState={emptyState} onClearFilters={() => { setQuery(""); setLocationFilter("ALL"); setConditionFilter("ALL"); searchRef.current?.focus(); }} onSelect={(row) => { setSelected(row); setDetailsOpen(true); }} onSort={setSort} sort={{ key: sortKey, direction }} />}
     </section>
     {warehouseOpen && <WarehouseForm products={products} existingName={warehouse?.locationName} onClose={() => setWarehouseOpen(false)} onSaved={() => { setWarehouseOpen(false); afterSave(); }} />}
     <InventoryDetails row={selected} open={detailsOpen} revision={inventory.revision} onClose={() => setDetailsOpen(false)} onOperation={(next) => { setDetailsOpen(false); setOperation(next); }} />

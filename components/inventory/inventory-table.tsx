@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { Button, makeStyles, mergeClasses, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, tokens } from "@fluentui/react-components";
 import { BoxMultipleRegular, BoxSearchRegular, VehicleTruckProfileRegular } from "@fluentui/react-icons";
 import type { StockLineDto } from "@/lib/contracts/inventory";
@@ -9,14 +10,14 @@ export interface InventoryRow { locationId: string; locationName: string; kind?:
 export type InventoryEmptyState = "locations" | "recorded" | "matching";
 
 const useStyles = makeStyles({
-  scroller: { maxWidth: "100%", overflowX: "auto" },
-  table: { width: "100%", minWidth: "860px", tableLayout: "fixed" },
-  locationColumn: { width: "132px" },
-  productColumn: { width: "auto" },
-  unitColumn: { width: "64px" },
-  quantityColumn: { width: "76px" },
-  availableColumn: { width: "96px" },
-  verificationColumn: { width: "130px" },
+  table: { width: "100%", minWidth: 0, tableLayout: "fixed" },
+  productColumn: { width: "34%" },
+  unitColumn: { width: "8%" },
+  quantityColumn: { width: "11%" },
+  availableColumn: { width: "12%" },
+  verificationColumn: { width: "13%" },
+  locationRow: { backgroundColor: tokens.colorNeutralBackground2 },
+  locationHeading: { paddingBlock: tokens.spacingVerticalS, fontWeight: tokens.fontWeightSemibold },
   numericHeader: {
     paddingInline: tokens.spacingHorizontalXS, textAlign: "right", verticalAlign: "bottom",
     whiteSpace: "normal", overflowWrap: "anywhere",
@@ -25,7 +26,7 @@ const useStyles = makeStyles({
     width: "100%", minWidth: 0, justifyContent: "flex-end", textAlign: "right",
     whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: tokens.lineHeightBase200,
   },
-  numericCell: { paddingInline: tokens.spacingHorizontalXS, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" },
+  numericCell: { paddingInline: tokens.spacingHorizontalXS, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" },
   verificationHeader: { paddingInlineEnd: tokens.spacingHorizontalL },
   verificationCell: { paddingInlineEnd: tokens.spacingHorizontalL },
   productCell: { minWidth: 0 },
@@ -35,26 +36,66 @@ const useStyles = makeStyles({
   },
   productName: { display: "block", overflowWrap: "anywhere" },
   sku: { display: "block", fontFamily: tokens.fontFamilyMonospace, color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
+  mobileHeaderLabel: {
+    display: "none",
+    "@media (max-width: 640px)": {
+      display: "block", marginBottom: tokens.spacingVerticalXXS,
+      color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase100,
+      fontWeight: tokens.fontWeightRegular, textAlign: "left", whiteSpace: "normal",
+    },
+  },
+  mobileTable: {
+    "@media (max-width: 640px)": {
+      "& .inventory-header-row": {
+        position: "absolute", width: "1px", height: "1px", padding: 0,
+        margin: "-1px", overflow: "hidden", clip: "rect(0, 0, 0, 0)",
+        whiteSpace: "nowrap", border: 0,
+      },
+      "& .inventory-product-row": {
+        display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        paddingBlock: tokens.spacingVerticalXS,
+      },
+      "& .inventory-product-row > *": {
+        minWidth: 0, paddingInline: tokens.spacingHorizontalXS,
+        whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "left",
+      },
+      "& .inventory-product-cell": { gridColumn: "1 / -1" },
+      "& .inventory-location-row": { display: "block" },
+      "& .inventory-location-row > *": { display: "block", width: "100%" },
+    },
+  },
 });
 
 export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onClearFilters }: {
   rows: InventoryRow[];
   onSelect: (row: InventoryRow) => void;
-  onSort: (key: "location" | "product" | "working" | "available") => void;
+  onSort: (key: "product" | "working" | "available") => void;
   sort: { key: string; direction: "asc" | "desc" };
   emptyState?: InventoryEmptyState;
   onClearFilters?: () => void;
 }) {
   const styles = useStyles();
-  const header = (label: string, key: "location" | "product" | "working" | "available", numeric = false) => (
+  const header = (label: string, key: "product" | "working" | "available", numeric = false) => (
     <TableHeaderCell className={numeric ? styles.numericHeader : undefined} aria-sort={sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
       <Button className={numeric ? styles.numericHeaderButton : undefined} appearance="subtle" size="small" onClick={() => onSort(key)}>{label}{sort.key === key ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</Button>
     </TableHeaderCell>
   );
-  return <div className={styles.scroller} role="region" aria-label="Inventory by location and product" tabIndex={0}>
-    <Table className={styles.table} aria-label="Inventory by location and product">
+  const groups = new Map<string, InventoryRow[]>();
+  for (const row of rows) {
+    const group = groups.get(row.locationId) ?? [];
+    group.push(row);
+    groups.set(row.locationId, group);
+  }
+  const sortedGroups = [...groups.values()].map((group) => ({
+    locationName: group[0].locationName,
+    kind: group[0].kind,
+    rows: group.sort((a, b) => {
+      const cmp = sort.key === "product" ? a.line.name.localeCompare(b.line.name) : sort.key === "working" ? a.line.working - b.line.working : a.line.available - b.line.available;
+      return cmp * (sort.direction === "asc" ? 1 : -1);
+    }),
+  })).sort((a, b) => a.locationName.localeCompare(b.locationName));
+  return <Table className={mergeClasses(styles.table, styles.mobileTable)} aria-label="Inventory stock by location">
       <colgroup>
-        <col className={styles.locationColumn} />
         <col className={styles.productColumn} />
         <col className={styles.unitColumn} />
         <col className={styles.quantityColumn} />
@@ -63,24 +104,29 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
         <col className={styles.quantityColumn} />
         <col className={styles.verificationColumn} />
       </colgroup>
-      <TableHeader><TableRow>
-        {header("Location", "location")}{header("Product / SKU", "product")}
+      <TableHeader><TableRow className="inventory-header-row">
+        {header("Product / SKU", "product")}
         <TableHeaderCell>Unit</TableHeaderCell>{header("Working physical", "working", true)}
         <TableHeaderCell className={styles.numericHeader}><div>Reserved</div></TableHeaderCell>{header("Available", "available", true)}
         <TableHeaderCell className={styles.numericHeader}><div>Broken</div></TableHeaderCell><TableHeaderCell className={mergeClasses(styles.numericHeader, styles.verificationHeader)}><div>Awaiting serial verification</div></TableHeaderCell>
       </TableRow></TableHeader>
-      <TableBody>{rows.length ? rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`}>
-        <TableCell><Button appearance="subtle" onClick={() => onSelect(row)}>{row.locationName}</Button></TableCell>
-        <TableCell className={styles.productCell}><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
-        <TableCell>{row.line.baseUnit}</TableCell>
-        <TableCell className={styles.numericCell}><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
-        <TableCell className={styles.numericCell}>{row.line.reserved.toLocaleString("en")}</TableCell>
-        <TableCell className={styles.numericCell}>{row.line.available.toLocaleString("en")}</TableCell>
-        <TableCell className={styles.numericCell}>{row.line.broken.toLocaleString("en")}</TableCell>
-        <TableCell className={mergeClasses(styles.numericCell, styles.verificationCell)}>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
-      </TableRow>) : emptyState ? <TableRow><TableCell colSpan={8} style={{ padding: 0, verticalAlign: "middle" }}><InventoryEmpty state={emptyState} onClearFilters={onClearFilters} /></TableCell></TableRow> : null}</TableBody>
+      <TableBody>{sortedGroups.length ? sortedGroups.map((group) => <Fragment key={group.rows[0].locationId}>
+        <TableRow key={`location:${group.rows[0].locationId}`} className={mergeClasses(styles.locationRow, "inventory-location-row")}>
+          <TableHeaderCell colSpan={7} className={styles.locationHeading}>
+            {group.kind === "VAN" ? `Van ${group.locationName}` : group.locationName}
+          </TableHeaderCell>
+        </TableRow>
+        {group.rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`} className="inventory-product-row">
+          <TableCell className={mergeClasses(styles.productCell, "inventory-product-cell")} data-label="Product / SKU"><span className={styles.mobileHeaderLabel}>Product / SKU</span><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
+          <TableCell data-label="Unit"><span className={styles.mobileHeaderLabel}>Unit</span>{row.line.baseUnit}</TableCell>
+          <TableCell className={styles.numericCell} data-label="Working physical"><span className={styles.mobileHeaderLabel}>Working physical</span><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>
+          <TableCell className={styles.numericCell} data-label="Reserved"><span className={styles.mobileHeaderLabel}>Reserved</span>{row.line.reserved.toLocaleString("en")}</TableCell>
+          <TableCell className={styles.numericCell} data-label="Available"><span className={styles.mobileHeaderLabel}>Available</span>{row.line.available.toLocaleString("en")}</TableCell>
+          <TableCell className={styles.numericCell} data-label="Broken"><span className={styles.mobileHeaderLabel}>Broken</span>{row.line.broken.toLocaleString("en")}</TableCell>
+          <TableCell className={mergeClasses(styles.numericCell, styles.verificationCell)} data-label="Awaiting serial verification"><span className={styles.mobileHeaderLabel}>Awaiting serial verification</span>{row.line.needsVerification === null ? "—" : row.line.needsVerification.toLocaleString("en")}</TableCell>
+        </TableRow>)}
+      </Fragment>) : emptyState ? <TableRow><TableCell colSpan={7} style={{ padding: 0, verticalAlign: "middle" }}><InventoryEmpty state={emptyState} onClearFilters={onClearFilters} /></TableCell></TableRow> : null}</TableBody>
     </Table>
-  </div>;
 }
 
 function InventoryEmpty({ state, onClearFilters }: { state: InventoryEmptyState; onClearFilters?: () => void }) {
