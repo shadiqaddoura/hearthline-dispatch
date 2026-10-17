@@ -125,7 +125,7 @@ export function ProductsView({ api: overrides, loadProducts }: ProductsViewProps
         actions={state.status === "ready" ? addButton : undefined}
       />
 
-      <section ref={surfaceRef} tabIndex={-1} className={styles.surface} aria-label="Products">
+      <section ref={surfaceRef} tabIndex={-1} className={styles.surface} aria-label="Products Catalog">
         <ProductsBody
           state={state}
           query={query}

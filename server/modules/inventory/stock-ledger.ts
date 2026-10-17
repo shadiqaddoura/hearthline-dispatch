@@ -7,7 +7,7 @@ import type { StockCondition, StockMovementType, UnitStatus } from "@/generated/
 // The only code that changes stock balances and serialised unit rows.
 //
 // moveStock() writes, in the caller's transaction:
-//   1. the balance change at each tracked end (VAN locations),
+//   1. the balance change at each tracked end (vans and configured warehouses),
 //   2. for serialised products, the matching EquipmentUnit rows,
 //   3. one StockMovement recording both ends.
 //
@@ -96,7 +96,7 @@ export interface CountInput {
 }
 
 /**
- * Applies a physical count at a van. The count is the resulting quantity, not a
+ * Applies a physical count at a tracked location. The count is the resulting quantity, not a
  * movement of particular units, so:
  *   1. serialised unit rows are reconciled to the counted number (not to the
  *      difference: an imported negative balance has no unit rows behind it),
@@ -107,7 +107,7 @@ export interface CountInput {
 export async function applyCount(tx: Tx, input: CountInput) {
   if (input.countedQuantity < 0) throw new AppError("VALIDATION_FAILED", "A counted quantity cannot be negative");
   const product = await tx.product.findUniqueOrThrow({ where: { id: input.productId } });
-  if (!(await trackedLocationId(tx, input))) throw new AppError("VALIDATION_FAILED", "Only van stock can be counted");
+  if (!(await trackedLocationId(tx, input))) throw new AppError("VALIDATION_FAILED", "Only tracked location stock can be counted");
 
   const key = { locationId: input.locationId, productId: input.productId, condition: input.condition };
   const previous = (await tx.stockBalance.findUnique({ where: { locationId_productId_condition: key } }))?.quantity ?? 0;
@@ -195,8 +195,8 @@ async function changeBalance(tx: Tx, locationId: string, productId: string, cond
 async function trackedLocationId(tx: Tx, endpoint: Endpoint | undefined): Promise<string | null> {
   const locationId = locationOf(endpoint);
   if (!locationId) return null;
-  const location = await tx.location.findUniqueOrThrow({ where: { id: locationId }, select: { kind: true } });
-  return location.kind === "VAN" ? locationId : null;
+  const location = await tx.location.findUniqueOrThrow({ where: { id: locationId }, select: { kind: true, inventoryTracked: true } });
+  return location.kind === "VAN" || location.inventoryTracked ? locationId : null;
 }
 
 function locationOf(endpoint: Endpoint | undefined) {
@@ -231,7 +231,18 @@ async function moveUnits(tx: Tx, input: MovementInput, fromLocation: string | nu
       if (known) await tx.equipmentUnit.update({ where: { id: known.id }, data: arrival });
       else await createUnit(tx, { ...arrival, productId: input.productId, serialNumber });
     }
-    const unidentified = input.quantity - serials.length;
+    let unidentified = input.quantity - serials.length;
+    // Setup adopts unidentified devices already returned to this legacy hub;
+    // preserve their ids instead of creating duplicate physical units.
+    if (input.type === "OPENING_BALANCE" && !input.from && unidentified > 0) {
+      const returned = await tx.equipmentUnit.findMany({
+        where: { locationId: toLocation, productId: input.productId, condition: input.condition, status: "AT_HUB", serialNumber: null },
+        take: unidentified,
+        select: { id: true },
+      });
+      if (returned.length) await tx.equipmentUnit.updateMany({ where: { id: { in: returned.map((unit) => unit.id) } }, data: destination });
+      unidentified -= returned.length;
+    }
     if (unidentified > 0) {
       await tx.equipmentUnit.createMany({
         data: Array.from({ length: unidentified }, () => ({
@@ -310,7 +321,7 @@ async function assertArrivingUnitsValid(tx: Tx, input: MovementInput, sku: strin
         ? unit.status === "INSTALLED" && unit.branchId === from.branchId
         : from && "locationId" in from
           ? unit.status === "AT_HUB" && unit.locationId === from.locationId
-          : false;
+          : input.type === "OPENING_BALANCE" && unit.status === "AT_HUB" && unit.locationId === locationOf(input.to);
     if (!comesFromSource) {
       throw new AppError("CONFLICT", `Unit ${unit.serialNumber} is recorded as ${UNIT_WHEREABOUTS[unit.status]}, so it cannot arrive from ${source}`, {
         serialNumber: unit.serialNumber,
@@ -321,7 +332,7 @@ async function assertArrivingUnitsValid(tx: Tx, input: MovementInput, sku: strin
 }
 
 const UNIT_WHEREABOUTS: Record<UnitStatus, string> = {
-  IN_STOCK: "in stock in a van (transfer it instead)",
+  IN_STOCK: "in stock at a tracked location (transfer it instead)",
   INSTALLED: "installed at a customer branch",
   AT_HUB: "at the hub",
   WRITTEN_OFF: "written off",

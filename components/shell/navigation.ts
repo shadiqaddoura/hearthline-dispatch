@@ -20,7 +20,7 @@ interface DestinationBase {
   label: string;
   /** Filled when selected, regular otherwise. */
   icon: FluentIcon;
-  section: "Operations" | "Stock" | "Data";
+  section: "Operations" | "Stock and Configuration" | "Data";
 }
 
 /** Built and routable. */
@@ -49,7 +49,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     value: "fleet",
     label: "Fleet",
     icon: bundleIcon(VehicleTruckProfileFilled, VehicleTruckProfileRegular),
-    section: "Operations",
+    section: "Stock and Configuration",
     status: "available",
     href: "/fleet",
   },
@@ -57,15 +57,15 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     value: "inventory",
     label: "Inventory",
     icon: bundleIcon(BoxMultipleFilled, BoxMultipleRegular),
-    section: "Stock",
+    section: "Stock and Configuration",
     status: "available",
     href: "/inventory",
   },
   {
     value: "products",
-    label: "Products",
+    label: "Products Catalog",
     icon: bundleIcon(TagMultipleFilled, TagMultipleRegular),
-    section: "Stock",
+    section: "Stock and Configuration",
     status: "available",
     href: "/products",
   },
@@ -73,7 +73,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
     value: "restocking",
     label: "Restocking",
     icon: bundleIcon(ArrowSyncFilled, ArrowSyncRegular),
-    section: "Stock",
+    section: "Operations",
     status: "available",
     href: "/restocking",
   },
@@ -86,7 +86,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
   },
 ];
 
-export const NAV_SECTIONS = ["Operations", "Stock", "Data"] as const;
+export const NAV_SECTIONS = ["Operations", "Stock and Configuration", "Data"] as const;
 
 /** The built destination whose route contains this path, if any. */
 export function destinationForPath(pathname: string): AvailableDestination | undefined {

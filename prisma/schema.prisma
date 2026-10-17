@@ -131,12 +131,12 @@ enum StockCondition {
   BROKEN
 }
 
-// A place stock physically sits. Balances are tracked for VAN locations.
-// The HUB location exists so movements can name it as source/destination;
-// hub shelf counts are not tracked in this milestone.
+// Vans and configured warehouses track physical stock. Legacy hubs remain
+// uncounted until an operator explicitly records their opening physical count.
 model Location {
   id        String       @id @default(cuid())
   kind      LocationKind
+  inventoryTracked Boolean @default(false)
   name      String       @unique
   createdAt DateTime     @default(now())
 

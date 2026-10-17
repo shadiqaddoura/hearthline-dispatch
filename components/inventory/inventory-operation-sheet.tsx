@@ -1,21 +1,46 @@
 "use client";
 
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input, MessageBar, MessageBarBody, Select, Spinner, Textarea } from "@fluentui/react-components";
+import { Button, Field, Input, makeStyles, MessageBar, MessageBarBody, Select, Spinner, Textarea, tokens } from "@fluentui/react-components";
 import type { ProductDto } from "@/lib/contracts/products";
 import type { InventoryLocationDto } from "@/lib/contracts/inventory";
 import type { StockCondition } from "@/generated/prisma/enums";
 import { inventoryApi } from "@/lib/api/inventory";
 import { FleetSheet } from "@/components/fleet/fleet-sheet";
+import { FleetConfirmation } from "@/components/fleet/fleet-confirmation";
 import type { InventoryOperation } from "./inventory-details";
 import type { InventoryRow } from "./inventory-table";
 
 const TITLES: Record<InventoryOperation, string> = { receive: "Add stock", correct: "Correct count", verify: "Verify serials", transfer: "Transfer stock" };
+const useStyles = makeStyles({
+  sheet: {
+    width: "min(560px, 100vw)", maxWidth: "100vw", minWidth: 0,
+    boxSizing: "border-box", overflowX: "hidden",
+  },
+  body: {
+    width: "100%", minWidth: 0, minHeight: 0, boxSizing: "border-box",
+    overflowX: "hidden", overflowY: "auto",
+  },
+  form: {
+    display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: tokens.spacingVerticalM,
+    width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box",
+    "& > *": { width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" },
+    "& input, & textarea, & select": { minWidth: 0, maxWidth: "100%", boxSizing: "border-box" },
+  },
+  message: {
+    minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere", wordBreak: "break-word",
+    "& *": { minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" },
+  },
+  footer: {
+    width: "100%", minWidth: 0, boxSizing: "border-box", justifyContent: "flex-end",
+  },
+});
 
 export function InventoryOperationSheet({ operation, row, locations, products, onClose, onSaved }: {
   operation: InventoryOperation | null; row: InventoryRow | null; locations: InventoryLocationDto[]; products: ProductDto[];
   onClose: () => void; onSaved: () => void;
 }) {
+  const styles = useStyles();
   const active = operation !== null;
   const [productId, setProductId] = useState(row?.line.productId ?? "");
   const [locationId, setLocationId] = useState(row?.locationId ?? locations.find((location) => location.kind === "VAN")?.locationId ?? "");
@@ -28,12 +53,28 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
   const [problem, setProblem] = useState("");
   const [pending, setPending] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [discard, setDiscard] = useState(false);
   const busy = useRef(false);
   const operationKey = useRef<string | null>(null);
   const product = products.find((item) => item.id === productId) ?? null;
   const otherLocations = useMemo(() => locations.filter((location) => location.locationId !== locationId), [locations, locationId]);
   const close = () => {
-    if (dirty && !window.confirm("Discard the changes in this inventory operation?")) return;
+    if (pending) return;
+    if (dirty) { setDiscard(true); return; }
+    onClose();
+  };
+  const discardChanges = () => {
+    setProductId(row?.line.productId ?? "");
+    setLocationId(row?.locationId ?? locations.find((location) => location.kind === "VAN")?.locationId ?? "");
+    setDestinationId("");
+    setCondition("WORKING");
+    setQuantity(operation === "correct" ? String(row?.line.working ?? 0) : "1");
+    setSerials("");
+    setActor("");
+    setNote("");
+    setProblem("");
+    setDirty(false);
+    setDiscard(false);
     onClose();
   };
   const update = <T,>(setter: (value: T) => void) => (value: T) => { setter(value); setDirty(true); };
@@ -72,10 +113,12 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
   const showProduct = operation === "receive";
   const showLocation = operation === "receive";
   const showSerials = operation === "receive" || operation === "verify" || operation === "transfer";
-  return <FleetSheet title={operation ? TITLES[operation] : "Inventory operation"} open={active} onClose={close} busy={pending}
+  return <>
+    <FleetSheet title={operation ? TITLES[operation] : "Inventory operation"} open={active} onClose={close} busy={pending}
+    className={styles.sheet} bodyClassName={styles.body} footerClassName={styles.footer}
     footer={<><Button onClick={close} disabled={pending}>Cancel</Button><Button appearance="primary" type="submit" form="inventory-operation-form" disabled={pending || !operation}>{pending ? <Spinner size="tiny" /> : TITLES[operation ?? "receive"]}</Button></>}>
-    {operation && <form id="inventory-operation-form" onSubmit={(event) => void submit(event)} style={{ display: "grid", gap: 16 }}>
-      {problem && <MessageBar intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar>}
+    {operation && <form id="inventory-operation-form" className={styles.form} onSubmit={(event) => void submit(event)}>
+      {problem && <MessageBar className={styles.message} intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar>}
       {showProduct && <Field label="Product" required><Select value={productId} onChange={(_, data) => { setProductId(data.value); markDirty(); }}><option value="">Choose a product</option>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</Select></Field>}
       {showLocation && <Field label="Receive at" required><Select value={locationId} onChange={(_, data) => { setLocationId(data.value); markDirty(); }}><option value="">Choose a van</option>{locations.filter((location) => location.kind === "VAN").map((location) => <option key={location.locationId} value={location.locationId}>{location.locationName}</option>)}</Select></Field>}
       {operation === "transfer" && row && <><Field label="From" ><Input value={row.locationName} readOnly /></Field><Field label="To location" required><Select value={destinationId} onChange={(_, data) => { setDestinationId(data.value); markDirty(); }}><option value="">Choose a destination</option>{otherLocations.map((location) => <option key={location.locationId} value={location.locationId}>{location.locationName}</option>)}</Select></Field></>}
@@ -90,8 +133,12 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
       </Field>}
       {operation !== "verify" && <Field label="Reason or reference" required={operation === "receive" || operation === "correct"} hint={operation === "transfer" ? "Optional" : undefined}><Textarea value={note} onChange={(_, data) => update(setNote)(data.value)} /></Field>}
       <Field label="Recorded by" required><Input value={actor} onChange={(_, data) => update(setActor)(data.value)} autoComplete="name" /></Field>
-      {operation === "receive" && !product?.serialised && <MessageBar intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products.</MessageBarBody></MessageBar>}
-      {operation === "correct" && <MessageBar intent="warning"><MessageBarBody>A count records what is physically present. Units with known serials cannot be silently written off. Imported negative balances are reconciled against the physical count, without creating units for the accounting difference. If the count is below known serialised units, use the separate missing-device reporting and recovery workflow; it is not implemented in Inventory.</MessageBarBody></MessageBar>}
+      {operation === "receive" && !product?.serialised && <MessageBar className={styles.message} intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products Catalog.</MessageBarBody></MessageBar>}
+      {operation === "correct" && <MessageBar className={styles.message} intent="warning"><MessageBarBody>A count records what is physically present. Units with known serials cannot be silently written off. Imported negative balances are reconciled against the physical count, without creating units for the accounting difference. If the count is below known serialised units, use the separate missing-device reporting and recovery workflow; it is not implemented in Inventory.</MessageBarBody></MessageBar>}
     </form>}
-  </FleetSheet>;
+    </FleetSheet>
+    <FleetConfirmation open={discard} title="Discard unsaved changes?" onClose={() => setDiscard(false)} onConfirm={discardChanges} action="Discard changes" cancelLabel="Keep editing">
+      Your changes to this inventory operation will be lost.
+    </FleetConfirmation>
+  </>;
 }

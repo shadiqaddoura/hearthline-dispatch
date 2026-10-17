@@ -54,6 +54,7 @@ export type CorrectStockRequest = z.infer<typeof correctStockRequest>;
 export const verifyUnitRequest = z.object({
   locationId: idSchema,
   productId: idSchema,
+  unitId: idSchema.optional(),
   serialNumber: z.string().trim().min(1),
   verifiedBy: actorSchema,
 });
@@ -133,6 +134,7 @@ export interface InventoryLocationDto {
   locationId: string;
   locationName: string;
   kind: "VAN" | "HUB";
+  inventoryTracked?: boolean;
   vanId: string | null;
   lines: StockLineDto[];
 }
@@ -151,3 +153,16 @@ export interface InventoryDetailDto {
   }[];
   movements: StockMovementDto[];
 }
+
+export const createWarehouseRequest = z.object({
+  name: z.string().trim().min(1).max(120),
+  performedBy: actorSchema,
+  note: z.string().trim().min(3).max(500),
+  openingStock: z.array(z.object({
+    productId: idSchema,
+    quantity: z.number().int().min(0).max(100000),
+    condition: z.enum(StockCondition).default("WORKING"),
+  })).max(200).default([]),
+}).refine((data) => new Set(data.openingStock.map((line) => `${line.productId}:${line.condition}`)).size === data.openingStock.length,
+  { message: "List each product and condition only once", path: ["openingStock"] });
+export type CreateWarehouseRequest = z.infer<typeof createWarehouseRequest>;

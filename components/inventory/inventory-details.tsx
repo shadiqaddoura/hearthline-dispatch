@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Button,
+  Input,
   makeStyles,
   mergeClasses,
   MessageBar,
@@ -17,7 +18,8 @@ import {
   Text,
   tokens,
 } from "@fluentui/react-components";
-import type { InventoryDetailDto, StockLineDto } from "@/lib/contracts/inventory";
+import { CheckmarkRegular } from "@fluentui/react-icons";
+import type { EquipmentUnitDto, InventoryDetailDto } from "@/lib/contracts/inventory";
 import type { InventoryRow } from "./inventory-table";
 import { inventoryApi } from "@/lib/api/inventory";
 import { FleetSheet } from "@/components/fleet/fleet-sheet";
@@ -28,7 +30,7 @@ const useStyles = makeStyles({
   section: { display: "grid", gap: tokens.spacingVerticalM, minWidth: 0 },
   scroller: { width: "100%", maxWidth: "100%", overflowX: "auto", overscrollBehaviorX: "contain" },
   summaryTable: { width: "100%", minWidth: "680px", tableLayout: "fixed" },
-  equipmentTable: { width: "100%", minWidth: "720px", tableLayout: "fixed" },
+  equipmentTable: { width: "100%", minWidth: "940px", tableLayout: "fixed" },
   reservationTable: { width: "100%", minWidth: "620px", tableLayout: "fixed" },
   movementTable: { width: "100%", minWidth: "1057px", tableLayout: "fixed" },
   headerCell: {
@@ -49,18 +51,26 @@ const useStyles = makeStyles({
   numericCell: { textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" },
   timestamp: { display: "flex", flexDirection: "column", whiteSpace: "nowrap" },
   mutedTime: { color: tokens.colorNeutralForeground3 },
+  verifyInput: { width: "100%", minWidth: 0, maxWidth: "100%" },
+  recordedByInput: { width: "100%", minWidth: 0, maxWidth: "140px" },
+  verifyError: { display: "block", color: tokens.colorPaletteRedForeground1, overflowWrap: "anywhere" },
+  verifyAction: { color: tokens.colorPaletteGreenForeground1 },
 });
 
-export function InventoryDetails({ row, open, revision, onClose, onOperation }: {
+export function InventoryDetails({ row, open, revision, onClose, onOperation, onVerified }: {
   row: InventoryRow | null;
   open: boolean;
   revision: number;
   onClose: () => void;
   onOperation: (operation: InventoryOperation) => void;
+  onVerified: () => void;
 }) {
   const styles = useStyles();
   const [detail, setDetail] = useState<InventoryDetailDto | null>(null);
   const [problem, setProblem] = useState("");
+  const [verificationDrafts, setVerificationDrafts] = useState<Record<string, { serialNumber: string; verifiedBy: string }>>({});
+  const [verificationErrors, setVerificationErrors] = useState<Record<string, string>>({});
+  const [verifyingUnitId, setVerifyingUnitId] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const locationId = row?.locationId;
   const productId = row?.line.productId;
@@ -82,7 +92,35 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation }: 
     return () => controller.abort();
   }, [open, locationId, productId, revision, attempt]);
 
-  const line: StockLineDto | null = row?.line ?? null;
+  const updateVerificationDraft = (unitId: string, field: "serialNumber" | "verifiedBy", value: string) => {
+    setVerificationDrafts((current) => ({
+      ...current,
+      [unitId]: { serialNumber: current[unitId]?.serialNumber ?? "", verifiedBy: current[unitId]?.verifiedBy ?? "", [field]: value },
+    }));
+    setVerificationErrors((current) => ({ ...current, [unitId]: "" }));
+  };
+  const verifyUnit = async (unit: EquipmentUnitDto) => {
+    if (!row || verifyingUnitId) return;
+    const draft = verificationDrafts[unit.id] ?? { serialNumber: "", verifiedBy: "" };
+    const serialNumber = draft.serialNumber.trim();
+    const verifiedBy = draft.verifiedBy.trim();
+    if (!serialNumber || !verifiedBy) {
+      setVerificationErrors((current) => ({ ...current, [unit.id]: !serialNumber ? "Enter a serial number." : "Enter who recorded this verification." }));
+      return;
+    }
+    setVerifyingUnitId(unit.id);
+    setVerificationErrors((current) => ({ ...current, [unit.id]: "" }));
+    try {
+      const verified = await inventoryApi.verify({ locationId: row.locationId, productId: row.line.productId, unitId: unit.id, serialNumber, verifiedBy });
+      setDetail((current) => current ? { ...current, units: current.units.map((currentUnit) => currentUnit.id === unit.id ? verified : currentUnit) } : current);
+      setVerificationDrafts((current) => { const next = { ...current }; delete next[unit.id]; return next; });
+      onVerified();
+    } catch (error) {
+      setVerificationErrors((current) => ({ ...current, [unit.id]: error instanceof Error ? error.message : "Serial verification failed. Retry this unit." }));
+    } finally {
+      setVerifyingUnitId(null);
+    }
+  };
 
   return (
     <FleetSheet
@@ -92,9 +130,8 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation }: 
       wide
       footer={
         <>
-          <Button appearance="primary" onClick={() => onOperation("receive")}>Add stock</Button>
+          {row?.kind !== "HUB" && <Button appearance="primary" onClick={() => onOperation("receive")}>Add stock</Button>}
           <Button onClick={() => onOperation("correct")}>Correct count</Button>
-          {line?.serialised && <Button onClick={() => onOperation("verify")}>Verify serials</Button>}
           <Button onClick={() => onOperation("transfer")}>Transfer stock</Button>
         </>
       }
@@ -140,17 +177,21 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation }: 
                     <div className={styles.scroller} role="region" aria-label="Equipment units" tabIndex={0}>
                       <Table className={styles.equipmentTable} aria-label="Equipment units">
                         <colgroup>
-                          <col style={{ width: "28%" }} /><col style={{ width: "21%" }} /><col style={{ width: "14%" }} />
-                          <col style={{ width: "16%" }} /><col style={{ width: "21%" }} />
+                          <col style={{ width: "22%" }} /><col style={{ width: "18%" }} /><col style={{ width: "12%" }} />
+                          <col style={{ width: "18%" }} /><col style={{ width: "15%" }} /><col style={{ width: "15%" }} />
                         </colgroup>
-                        <TableHeader><TableRow>{["Serial", "Verification", "Condition", "Recorded by", "Verified"].map((heading) => <TableHeaderCell key={heading} className={styles.headerCell}>{heading}</TableHeaderCell>)}</TableRow></TableHeader>
+                        <TableHeader><TableRow>{["Serial", "Verification", "Condition", "Recorded by", "Verified", "Action"].map((heading) => <TableHeaderCell key={heading} className={styles.headerCell}>{heading}</TableHeaderCell>)}</TableRow></TableHeader>
                         <TableBody>{detail.units.map((unit) => (
                           <TableRow key={unit.id}>
-                            <TableCell className={styles.cell}>{unit.serialNumber ?? "Not recorded"}</TableCell>
+                            <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <Input className={styles.verifyInput} size="small" value={verificationDrafts[unit.id]?.serialNumber ?? ""} aria-label="Serial number for unit awaiting verification" aria-invalid={Boolean(verificationErrors[unit.id])} aria-describedby={verificationErrors[unit.id] ? `verification-error-${unit.id}` : undefined} disabled={verifyingUnitId !== null} onChange={(_, data) => updateVerificationDraft(unit.id, "serialNumber", data.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void verifyUnit(unit); } }} /> : unit.serialNumber ?? "—"}</TableCell>
                             <TableCell className={styles.cell}>{unit.verification === "VERIFIED" ? "Verified" : "Needs verification"}</TableCell>
                             <TableCell className={styles.cell}>{unit.condition}</TableCell>
-                            <TableCell className={styles.cell}>{unit.verifiedBy ?? "—"}</TableCell>
+                            <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <Input className={styles.recordedByInput} size="small" value={verificationDrafts[unit.id]?.verifiedBy ?? ""} aria-label="Recorded by for unit awaiting verification" aria-invalid={Boolean(verificationErrors[unit.id])} aria-describedby={verificationErrors[unit.id] ? `verification-error-${unit.id}` : undefined} disabled={verifyingUnitId !== null} onChange={(_, data) => updateVerificationDraft(unit.id, "verifiedBy", data.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void verifyUnit(unit); } }} /> : unit.verifiedBy ?? "—"}</TableCell>
                             <TableCell className={styles.cell}>{unit.verifiedAt ? <Timestamp value={unit.verifiedAt} className={styles.timestamp} mutedClassName={styles.mutedTime} /> : "—"}</TableCell>
+                            <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <>
+                              <Button size="small" appearance="subtle" className={styles.verifyAction} icon={verifyingUnitId === unit.id ? <Spinner size="tiny" label="Saving verification" /> : <CheckmarkRegular />} aria-label="Verify serial" title="Verify serial" disabled={verifyingUnitId !== null} onClick={() => void verifyUnit(unit)} />
+                              {verificationErrors[unit.id] && <Text as="span" size={200} role="alert" id={`verification-error-${unit.id}`} className={styles.verifyError}>{verificationErrors[unit.id]}</Text>}
+                            </> : "—"}</TableCell>
                           </TableRow>
                         ))}</TableBody>
                       </Table>
