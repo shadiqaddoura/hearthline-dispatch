@@ -18,7 +18,7 @@ export async function sessionUser(token?: string): Promise<AuthUser | null> {
   return { id: session.user.id, email: session.user.email, name: session.user.name, role: session.user.role };
 }
 
-async function consumeLimit(key: string, limit: number, seconds: number) {
+export async function consumeLimit(key: string, limit: number, seconds: number) {
   // Atomic across app instances, including the first concurrent attempt.
   const rows = await prisma.$queryRaw<{ attempts: number }[]>`
     INSERT INTO login_throttles (key, attempts, "expiresAt")
@@ -41,13 +41,18 @@ export async function signIn(input: unknown, previousToken?: string) {
   const user = await prisma.user.findUnique({ where: { email } });
   const valid = await verifyPassword(password, user?.passwordHash);
   if (!user || !valid || !user.active) throw new AppError("UNAUTHORIZED", LOGIN_ERROR);
+  return createSessionForUser(user, previousToken);
+}
+
+/** Shared by password and explicitly enabled demo login. Rechecks the account under lock. */
+export async function createSessionForUser(user: { id: string; passwordHash: string; role: AuthUser["role"]; bootstrapKey: string | null }, previousToken?: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_SECONDS * 1000);
   await prisma.$transaction(async (tx) => {
     // Serialize password rotation with login; no session may outlive a concurrent reset.
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
     const current = await tx.user.findUnique({ where: { id: user.id } });
-    if (!current?.active || current.passwordHash !== user.passwordHash) throw new AppError("UNAUTHORIZED", LOGIN_ERROR);
+    if (!current?.active || current.passwordHash !== user.passwordHash || current.role !== user.role || current.bootstrapKey !== user.bootstrapKey) throw new AppError("UNAUTHORIZED", LOGIN_ERROR);
     if (previousToken) await tx.session.deleteMany({ where: { tokenHash: tokenHash(previousToken) } });
     await tx.session.create({ data: { tokenHash: tokenHash(token), userId: user.id, expiresAt } });
   });

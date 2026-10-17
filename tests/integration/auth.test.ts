@@ -17,6 +17,9 @@ import { signIn, sessionUser, tokenHash, logout, LOGIN_ERROR } from "@/server/mo
 import { provisionUsers } from "@/server/modules/auth/provision.service";
 import { requirePageUser, SESSION_COOKIE, cookieOptions } from "@/server/modules/auth/request";
 import { POST as loginRoute } from "@/app/api/auth/sign-in/route";
+import { POST as demoRoute } from "@/app/api/auth/demo-sign-in/route";
+import { publicDemoAccounts } from "@/server/modules/auth/demo-credentials";
+import { listDemoAccounts } from "@/server/modules/auth/demo.service";
 import { POST as logoutRoute } from "@/app/api/auth/logout/route";
 import { GET as productsRoute, POST as createProductRoute } from "@/app/api/products/route";
 import { POST as receiveRoute } from "@/app/api/inventory/route";
@@ -47,6 +50,87 @@ beforeEach(async () => {
 });
 
 describe("database authentication", () => {
+  it("disables demo login and account exposure by default, even for direct requests", async () => {
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "");
+    expect(await listDemoAccounts()).toEqual([]);
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(404);
+    expect(await prisma.session.count()).toBe(0);
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "false");
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(404);
+  });
+  it("creates ordinary sessions for only the two active provisioned demo users and preserves full access", async () => {
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "true");
+    await prisma.user.update({ where: { id: admin.id }, data: { bootstrapKey: "initial-admin" } });
+    await prisma.user.update({ where: { id: operations.id }, data: { bootstrapKey: "initial-operations" } });
+    const accounts = await listDemoAccounts();
+    expect(accounts).toEqual([
+      { role: "ADMIN", name: "Admin", email: admin.email },
+      { role: "OPERATIONS", name: "Operations", email: operations.email },
+    ]);
+    let previous: string | undefined;
+    for (const user of [{ ...admin, role: "ADMIN" }, { ...operations, role: "OPERATIONS" }]) {
+      const response = await demoRoute(request("/api/auth/demo-sign-in", { role: user.role }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ data: { ok: true } });
+      const token = state.values.get(SESSION_COOKIE)!;
+      expect(await sessionUser(token)).toMatchObject({ id: user.id, role: user.role });
+      if (previous) expect(await sessionUser(previous)).toBeNull();
+      expect(state.settings.get(SESSION_COOKIE)).toMatchObject({ ...cookieOptions, expires: expect.any(Date) });
+      expect((await productsRoute(request("/api/products"))).status).toBe(200);
+      expect((await createProductRoute(request("/api/products", { sku: `DEMO-${user.id}`, name: "Demo product", serialised: false, baseUnit: "each", packUnit: null, packSize: null, vanMinimum: 0, autoRestock: false }))).status).toBe(201);
+      expect(await requirePageUser()).toMatchObject({ id: user.id });
+      previous = token;
+    }
+    // Turning off the entry point does not turn existing normal sessions into a bypass.
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "false");
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(404);
+    expect((await logoutRoute(request("/api/auth/logout", undefined, "POST"))).status).toBe(200);
+    expect(await sessionUser(previous)).toBeNull();
+  });
+  it("fails closed for missing, disabled, mismatched and client-selected demo accounts", async () => {
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "true");
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(401);
+    await prisma.user.update({ where: { id: admin.id }, data: { bootstrapKey: "initial-admin", active: false } });
+    expect(await listDemoAccounts()).toEqual([]);
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(401);
+    await prisma.user.update({ where: { id: admin.id }, data: { active: true, role: "OPERATIONS" } });
+    expect(await listDemoAccounts()).toEqual([]);
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(401);
+    for (const body of [{ role: "OTHER" }, { role: "OPERATIONS", userId: admin.id }, { email: admin.email }]) {
+      expect((await demoRoute(request("/api/auth/demo-sign-in", body))).status).toBe(401);
+    }
+    expect(await prisma.session.count()).toBe(0);
+  });
+  it("enforces same-origin and rate limits on demo sign-in", async () => {
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "true");
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }, "POST", "https://other.example"))).status).toBe(403);
+    await prisma.loginThrottle.create({ data: { key: "demo-global", attempts: 60, expiresAt: new Date(Date.now() + 60_000) } });
+    expect((await demoRoute(request("/api/auth/demo-sign-in", { role: "ADMIN" }))).status).toBe(429);
+    expect(await prisma.session.count()).toBe(0);
+  });
+  it("seeds public demo credentials idempotently, displays only matching passwords, and supports normal password login", async () => {
+    await prisma.user.deleteMany();
+    const before = await prisma.product.findMany();
+    const run = () => execFileSync(process.execPath, ["--conditions=react-server", "--import", "tsx", "scripts/provision-users.ts", "--demo"], { env: process.env, encoding: "utf8" });
+    expect(run()).toContain("accounts are provisioned");
+    const original = await prisma.user.findMany({ orderBy: { email: "asc" } });
+    expect(original).toHaveLength(2);
+    run();
+    expect(await prisma.user.findMany({ orderBy: { email: "asc" } })).toEqual(original);
+    vi.stubEnv("AUTH_DEMO_SIGN_IN", "true");
+    expect(await listDemoAccounts()).toEqual(publicDemoAccounts.map(({ role, name, email, password }) => ({ role, name, email, password })));
+    for (const account of publicDemoAccounts) {
+      const stored = original.find((user) => user.role === account.role)!;
+      expect(stored.passwordHash).not.toBe(account.password);
+      expect(stored.passwordHash).toMatch(/^scrypt\$131072\$8\$1\$/);
+      expect((await loginRoute(request("/api/auth/sign-in", { email: account.email, password: account.password }))).status).toBe(200);
+      expect(await requirePageUser()).toMatchObject({ id: stored.id, role: account.role });
+      expect((await productsRoute(request("/api/products"))).status).toBe(200);
+    }
+    await prisma.user.update({ where: { id: original[0].id }, data: { passwordHash: await hashPassword(randomBytes(24).toString("base64url")) } });
+    expect((await listDemoAccounts()).find((account) => account.email === original[0].email)).not.toHaveProperty("password");
+    expect(await prisma.product.findMany()).toEqual(before);
+  });
   it("uses salted strong hashes and verifies passwords", async () => {
     expect(passwordHash).toMatch(/^scrypt\$131072\$8\$1\$/);
     expect(passwordHash).not.toContain(password);
