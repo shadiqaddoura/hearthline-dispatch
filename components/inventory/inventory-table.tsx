@@ -15,6 +15,7 @@ const useStyles = makeStyles({
   productColumn: { width: "auto" },
   unitColumn: { width: "64px" },
   quantityColumn: { width: "76px" },
+  availableColumn: { width: "96px" },
   verificationColumn: { width: "130px" },
   numericHeader: {
     paddingInline: tokens.spacingHorizontalXS, textAlign: "right", verticalAlign: "bottom",
@@ -58,7 +59,7 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
         <col className={styles.unitColumn} />
         <col className={styles.quantityColumn} />
         <col className={styles.quantityColumn} />
-        <col className={styles.quantityColumn} />
+        <col className={styles.availableColumn} />
         <col className={styles.quantityColumn} />
         <col className={styles.verificationColumn} />
       </colgroup>
