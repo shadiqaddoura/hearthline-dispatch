@@ -5,7 +5,7 @@ import { Button, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Me
 import { AddRegular } from "@fluentui/react-icons";
 import type { ProductDto } from "@/lib/contracts/products";
 import { fetchProducts } from "@/lib/api/products";
-import { InventoryTable, type InventoryRow } from "./inventory-table";
+import { InventoryTable, type InventoryEmptyState, type InventoryRow } from "./inventory-table";
 import { InventoryDetails, type InventoryOperation } from "./inventory-details";
 import { InventoryOperationSheet } from "./inventory-operation-sheet";
 import { useInventory } from "./use-inventory";
@@ -61,6 +61,9 @@ export function InventoryView() {
       return cmp * (direction === "asc" ? 1 : -1);
     });
   }, [allRows, query, locationFilter, conditionFilter, sortKey, direction]);
+  const hasVanLocations = (inventory.locations ?? []).some((location) => location.kind === "VAN");
+  const hasRecordedInventory = allRows.some(({ line }) => line.working !== 0 || line.broken !== 0 || line.reserved !== 0);
+  const emptyState: InventoryEmptyState = !hasVanLocations ? "locations" : !hasRecordedInventory ? "recorded" : "matching";
   const setSort = (key: SortKey) => {
     if (sortKey === key) setDirection((current) => current === "asc" ? "desc" : "asc");
     else { setSortKey(key); setDirection("asc"); }
@@ -84,7 +87,7 @@ export function InventoryView() {
     </div>
     <section ref={surfaceRef} tabIndex={-1} className={styles.surface} aria-label="Inventory">
       <Text as="h2" weight="semibold" className={styles.tableHeading}>Inventory by location and product</Text>
-      {inventory.loading && !inventory.locations ? <Spinner label="Loading inventory" /> : inventory.problem ? <div style={{ padding: 24 }}><Button onClick={() => { inventory.refresh(); surfaceRef.current?.focus(); }}>Retry inventory</Button></div> : visibleRows.length ? <><Text size={200} style={{ paddingInline: 20 }}>{visibleRows.length} of {allRows.length} stock lines</Text><InventoryTable rows={visibleRows} onSelect={(row) => { setSelected(row); setDetailsOpen(true); }} onSort={setSort} sort={{ key: sortKey, direction }} /></> : allRows.length ? <div style={{ padding: 24 }}><Text>{(inventory.locations ?? []).find((location) => location.locationId === locationFilter)?.kind === "HUB" ? "Warehouse shelf balances are not tracked in this milestone." : "No stock lines match these filters."}</Text><Button onClick={() => { setQuery(""); setLocationFilter("ALL"); setConditionFilter("ALL"); searchRef.current?.focus(); }}>Clear filters</Button></div> : inventory.locations?.some((location) => location.kind === "VAN") ? <div style={{ padding: 24 }}><Text>No stock balances recorded for the current vans.</Text></div> : <div style={{ padding: 24 }}><Text>No van locations are configured yet.</Text></div>}
+      {inventory.loading && !inventory.locations ? <Spinner label="Loading inventory" /> : inventory.problem ? <div style={{ padding: 24 }}><Button onClick={() => { inventory.refresh(); surfaceRef.current?.focus(); }}>Retry inventory</Button></div> : <>{visibleRows.length > 0 && <Text size={200} style={{ paddingInline: 20 }}>{visibleRows.length} of {allRows.length} stock lines</Text>}<InventoryTable rows={visibleRows} emptyState={emptyState} onClearFilters={() => { setQuery(""); setLocationFilter("ALL"); setConditionFilter("ALL"); searchRef.current?.focus(); }} onSelect={(row) => { setSelected(row); setDetailsOpen(true); }} onSort={setSort} sort={{ key: sortKey, direction }} /></>}
     </section>
     <InventoryDetails row={selected} open={detailsOpen} revision={inventory.revision} onClose={() => setDetailsOpen(false)} onOperation={(next) => { setDetailsOpen(false); setOperation(next); }} />
     <InventoryOperationSheet key={`${operation ?? "closed"}:${selected?.locationId ?? "new"}:${selected?.line.productId ?? "new"}`} operation={operation} row={selected} locations={inventory.locations ?? []} products={products} onClose={() => setOperation(null)} onSaved={afterSave} />
