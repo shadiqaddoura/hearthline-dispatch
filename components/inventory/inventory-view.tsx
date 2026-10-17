@@ -110,7 +110,7 @@ export function InventoryView() {
       {inventory.loading && !inventory.locations ? <Spinner label="Loading inventory" /> : inventory.problem ? <div style={{ padding: 24 }}><Button onClick={() => { inventory.refresh(); surfaceRef.current?.focus(); }}>Retry inventory</Button></div> : <InventoryTable rows={visibleRows} emptyState={emptyState} onClearFilters={() => { setQuery(""); setLocationFilter("ALL"); setConditionFilter("ALL"); searchRef.current?.focus(); }} onSelect={(row) => { setSelected(row); setDetailsOpen(true); }} onSort={setSort} sort={{ key: sortKey, direction }} />}
     </section>
     {warehouseOpen && <WarehouseForm products={products} existingName={warehouse?.locationName} onClose={() => setWarehouseOpen(false)} onSaved={() => { setWarehouseOpen(false); afterSave(); }} />}
-    <InventoryDetails row={selected} open={detailsOpen} revision={inventory.revision} onClose={() => setDetailsOpen(false)} onOperation={(next) => { setDetailsOpen(false); setOperation(next); }} />
+    <InventoryDetails row={selected} open={detailsOpen} revision={inventory.revision} onClose={() => setDetailsOpen(false)} onOperation={(next) => { setDetailsOpen(false); setOperation(next); }} onVerified={inventory.refresh} />
     <InventoryOperationSheet key={`${operation ?? "closed"}:${selected?.locationId ?? "new"}:${selected?.line.productId ?? "new"}`} operation={operation} row={selected} locations={inventory.locations ?? []} products={products} onClose={() => setOperation(null)} onSaved={afterSave} />
   </div>;
 }

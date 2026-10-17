@@ -251,6 +251,7 @@ export async function verifyUnit(input: VerifyUnitRequest): Promise<EquipmentUni
     }
     const placeholder = await tx.equipmentUnit.findFirst({
       where: {
+        ...(input.unitId ? { id: input.unitId } : {}),
         locationId: input.locationId,
         productId: input.productId,
         status: "IN_STOCK",
@@ -281,6 +282,8 @@ export async function verifyUnit(input: VerifyUnitRequest): Promise<EquipmentUni
     verification: unit.verification,
     condition: unit.condition,
     locationId: unit.locationId,
+    verifiedAt: unit.verifiedAt?.toISOString() ?? null,
+    verifiedBy: unit.verifiedBy,
   };
 }
 

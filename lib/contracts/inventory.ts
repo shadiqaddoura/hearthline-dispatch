@@ -54,6 +54,7 @@ export type CorrectStockRequest = z.infer<typeof correctStockRequest>;
 export const verifyUnitRequest = z.object({
   locationId: idSchema,
   productId: idSchema,
+  unitId: idSchema.optional(),
   serialNumber: z.string().trim().min(1),
   verifiedBy: actorSchema,
 });

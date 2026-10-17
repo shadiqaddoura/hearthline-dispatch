@@ -4,10 +4,10 @@ import { runInTransaction } from "@/server/db/transaction";
 import { moveStock } from "@/server/modules/inventory/stock-ledger";
 import { assignJob } from "@/server/modules/dispatch/dispatch.service";
 import { updateVan } from "@/server/modules/fleet/fleet.service";
-import { correctStock, getVanStock, transferStock } from "@/server/modules/inventory/inventory.service";
+import { correctStock, getVanStock, transferStock, verifyUnit } from "@/server/modules/inventory/inventory.service";
 import { getJob } from "@/server/modules/jobs/jobs.service";
 import { listRestockJobs } from "@/server/modules/restocking/restock.service";
-import { correctStockRequest } from "@/lib/contracts/inventory";
+import { correctStockRequest, verifyUnitRequest } from "@/lib/contracts/inventory";
 import { balance, createWorld, newJob, stockVan, type World } from "../support/world";
 
 let w: World;
@@ -260,6 +260,60 @@ describe("correcting serialised counts", () => {
     expect(await unitsHere()).toEqual(before);
     expect(await prisma.stockCorrection.count()).toBe(0);
     expect(await prisma.stockMovement.count({ where: { type: "CORRECTION" } })).toBe(0);
+  });
+});
+
+describe("serial verification", () => {
+  const unitsHere = () => prisma.equipmentUnit.findMany({
+    where: { productId: w.printer.id, locationId: w.north.locationId, status: "IN_STOCK" },
+    orderBy: { createdAt: "asc" },
+  });
+
+  it("rejects blank serial numbers at the request boundary", () => {
+    expect(verifyUnitRequest.safeParse({ locationId: "loc", productId: "prod", serialNumber: "  ", verifiedBy: "Nadia" }).success).toBe(false);
+  });
+
+  it("verifies the selected counted unit without changing stock or another unit", async () => {
+    await stockVan(w.north.locationId, w.printer.id, 1);
+    await stockVan(w.north.locationId, w.printer.id, 1);
+    await stockVan(w.north.locationId, w.printer.id, 1);
+    const before = await unitsHere();
+    const movementCount = await prisma.stockMovement.count();
+    const selected = before[2];
+
+    const verified = await verifyUnit({
+      locationId: w.north.locationId,
+      productId: w.printer.id,
+      unitId: selected.id,
+      serialNumber: "VERIFY-SELECTED-3",
+      verifiedBy: "Nadia",
+    });
+
+    expect(verified).toMatchObject({ id: selected.id, serialNumber: "VERIFY-SELECTED-3", verification: "VERIFIED", verifiedBy: "Nadia" });
+    expect(verified.verifiedAt).toBeTruthy();
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(3);
+    expect(await prisma.stockMovement.count()).toBe(movementCount);
+    expect(await prisma.equipmentUnit.findUnique({ where: { id: before[0].id } })).toMatchObject({ serialNumber: null, verification: "NEEDS_VERIFICATION" });
+    expect(await prisma.equipmentUnit.findUnique({ where: { id: before[1].id } })).toMatchObject({ serialNumber: null, verification: "NEEDS_VERIFICATION" });
+  });
+
+  it("leaves the selected unit unchanged when its serial is already recorded", async () => {
+    await stockVan(w.north.locationId, w.printer.id, 1, { serials: ["VERIFY-EXISTING"] });
+    await stockVan(w.north.locationId, w.printer.id, 1);
+    const placeholder = (await unitsHere()).find((unit) => unit.verification === "NEEDS_VERIFICATION")!;
+    const movementCount = await prisma.stockMovement.count();
+
+    await expect(verifyUnit({
+      locationId: w.north.locationId,
+      productId: w.printer.id,
+      unitId: placeholder.id,
+      serialNumber: "VERIFY-EXISTING",
+      verifiedBy: "Nadia",
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(await balance(w.north.locationId, w.printer.id)).toBe(2);
+    expect(await prisma.stockMovement.count()).toBe(movementCount);
+    expect(await prisma.equipmentUnit.findUnique({ where: { id: placeholder.id } })).toMatchObject({ serialNumber: null, verification: "NEEDS_VERIFICATION", verifiedBy: null, verifiedAt: null });
   });
 });
 
