@@ -1,20 +1,28 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody } from "@fluentui/react-components";
+import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, makeStyles, tokens } from "@fluentui/react-components";
 import { DeleteRegular } from "@fluentui/react-icons";
 import type { InventoryLocationDto } from "@/lib/contracts/inventory";
 import { fleetApi } from "@/lib/api/fleet";
 import { inventoryApi } from "@/lib/api/inventory";
+import { ApiRequestError } from "@/lib/api/client";
+
+const useStyles = makeStyles({
+  dependencyList: { marginBlock: tokens.spacingVerticalS, paddingInlineStart: tokens.spacingHorizontalL, overflowWrap: "anywhere", wordBreak: "break-word" },
+});
+
+type DeleteProblem = { message: string; dependencies: string[] };
 
 export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
   location: InventoryLocationDto;
   onDeleted: (name: string) => void;
   onRefresh: () => void;
 }) {
+  const styles = useStyles();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
-  const [problem, setProblem] = useState("");
+  const [problem, setProblem] = useState<DeleteProblem | null>(null);
   const deleting = useRef(false);
   const kind = location.kind === "HUB" ? "warehouse" : "van";
 
@@ -22,7 +30,7 @@ export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
     if (deleting.current) return;
     deleting.current = true;
     setPending(true);
-    setProblem("");
+    setProblem(null);
     try {
       if (location.kind === "HUB") await inventoryApi.deleteWarehouse(location.locationId);
       else if (location.vanId) await fleetApi.remove(location.vanId);
@@ -30,7 +38,7 @@ export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
       setOpen(false);
       onDeleted(location.locationName);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "The location was not deleted. Refresh and try again.");
+      setProblem(toDeleteProblem(error));
       onRefresh();
     } finally {
       deleting.current = false;
@@ -45,7 +53,7 @@ export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
       icon={<DeleteRegular />}
       aria-label={`Delete ${kind} ${location.locationName}`}
       title={`Delete ${kind}`}
-      onClick={() => { setProblem(""); setOpen(true); }}
+      onClick={() => { setProblem(null); setOpen(true); }}
       disabled={pending}
     />
     <Dialog open={open} modalType="alert" onOpenChange={(_, data) => { if (!data.open && !pending) setOpen(false); }}>
@@ -54,7 +62,10 @@ export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
           <DialogTitle>Delete {kind} {location.locationName}?</DialogTitle>
           <DialogContent>
             <p>Deletion is allowed only when there are no product stock lines or dependent records. Stock movements and other history are retained and will block deletion.</p>
-            {problem && <MessageBar intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar>}
+            {problem && <>
+              <MessageBar intent="error"><MessageBarBody>{problem.message}</MessageBarBody></MessageBar>
+              {problem.dependencies.length > 0 && <ul className={styles.dependencyList}>{problem.dependencies.map((dependency) => <li key={dependency}>{dependency}</li>)}</ul>}
+            </>}
           </DialogContent>
           <DialogActions>
             <Button disabled={pending} onClick={() => setOpen(false)}>Cancel</Button>
@@ -64,4 +75,25 @@ export function InventoryLocationDelete({ location, onDeleted, onRefresh }: {
       </DialogSurface>
     </Dialog>
   </>;
+}
+
+function toDeleteProblem(error: unknown): DeleteProblem {
+  const message = error instanceof Error ? error.message : "The location was not deleted. Refresh and try again.";
+  const details = error instanceof ApiRequestError && typeof error.details === "object" && error.details !== null
+    ? error.details as { dependencies?: unknown }
+    : null;
+  const rawDependencies = Array.isArray(details?.dependencies)
+    ? details.dependencies.filter((value): value is string => typeof value === "string")
+    : [];
+  const dependencies = rawDependencies.map(formatDependency);
+  const countSentence = rawDependencies.length ? `: ${rawDependencies.join(", ")}.` : "";
+  return { message: countSentence ? message.replace(countSentence, ".") : message, dependencies };
+}
+
+function formatDependency(dependency: string) {
+  const match = /^(\d+)\s+(.+)$/.exec(dependency);
+  if (!match) return dependency;
+  const [, count, label] = match;
+  const noun = Number(count) === 1 ? label.replace(/s$/, "") : label;
+  return `${count} ${noun}`;
 }

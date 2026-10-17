@@ -4,6 +4,7 @@ import { Button, Field, Input, Select, MessageBar, MessageBarBody, Spinner, Text
 import { AddRegular } from "@fluentui/react-icons";
 import type { VanDto } from "@/lib/contracts/fleet";
 import { fleetApi } from "@/lib/api/fleet";
+import { ApiRequestError } from "@/lib/api/client";
 import { FleetTable } from "./fleet-table";
 import { FleetDetails } from "./fleet-details";
 import { FleetForm } from "./fleet-form";
@@ -13,7 +14,9 @@ const useStyles = makeStyles({
   page: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalL },
   toolbar: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalM, alignItems: "end" },
   surface: { backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusLarge, boxShadow: tokens.shadow2, overflow: "hidden" },
+  dependencyList: { marginBlock: tokens.spacingVerticalS, paddingInlineStart: tokens.spacingHorizontalL, overflowWrap: "anywhere", wordBreak: "break-word" },
 });
+type DeleteProblem = { message: string; dependencies: string[] };
 export function FleetView() {
   const styles = useStyles();
   const fleet = useFleet();
@@ -24,7 +27,7 @@ export function FleetView() {
   const [mode, setMode] = useState<"view" | "edit" | "create" | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [pending, setPending] = useState(false);
-  const [problem, setProblem] = useState("");
+  const [problem, setProblem] = useState<DeleteProblem | null>(null);
   const [notice, setNotice] = useState("");
   const deleting = useRef(false);
   const addRef = useRef<HTMLButtonElement>(null);
@@ -37,9 +40,9 @@ export function FleetView() {
   const saved = (v: VanDto) => { setSelected(v); setMode("view"); setNotice(`${v.code} saved.`); refresh(); };
   const remove = async () => {
     if (!van || deleting.current) return;
-    deleting.current = true; setPending(true); setProblem("");
+    deleting.current = true; setPending(true); setProblem(null);
     try { await fleetApi.remove(van.id); setNotice(`${van.code} permanently deleted.`); setConfirm(false); setMode(null); refresh(); requestAnimationFrame(() => addRef.current?.focus()); }
-    catch (e) { setProblem(e instanceof Error ? e.message : "Unable to confirm deletion. Refresh before retrying."); refresh(); requestAnimationFrame(() => deleteProblemRef.current?.focus()); }
+    catch (e) { setProblem(toDeleteProblem(e)); refresh(); requestAnimationFrame(() => deleteProblemRef.current?.focus()); }
     finally { deleting.current = false; setPending(false); }
   };
   const visible = (fleet.data?.vans ?? []).filter(v => [v.code, v.plate, v.zone, v.technician?.name].some(s => s?.toLowerCase().includes(query.trim().toLowerCase())) && (status === "ALL" || status === "UNDRIVEN" ? status !== "UNDRIVEN" || !v.technician : v.status === status)).sort((a, b) => {
@@ -58,11 +61,36 @@ export function FleetView() {
       <Button {...restore} ref={addRef} appearance="primary" icon={<AddRegular />} onClick={() => { setMode("create"); setNotice(""); }}>Add van</Button>
       <Button onClick={refresh}>Refresh</Button>
     </div>
-    {fleet.loading ? <Spinner label="Loading fleet" /> : fleet.data && <><Text size={200}>{visible.length} of {fleet.data.vans.length} vans</Text><section className={styles.surface}>{visible.length ? <FleetTable vans={visible} jobs={fleet.data.jobs} onSelect={v => { setSelected(v); setMode("view"); setProblem(""); }} /> : <p style={{ padding: 24 }}>{fleet.data.vans.length ? "No vans match these filters." : "No vans yet. Add your first van."}</p>}</section></>}
-    {van && <FleetDetails key={`details:${van.id}`} van={van} open={mode === "view"} jobs={fleet.data?.jobs ?? []} revision={fleet.revision} onClose={() => setMode(null)} onEdit={() => setMode("edit")} onDelete={() => { setProblem(""); setConfirm(true); }} />}
+    {fleet.loading ? <Spinner label="Loading fleet" /> : fleet.data && <><Text size={200}>{visible.length} of {fleet.data.vans.length} vans</Text><section className={styles.surface}>{visible.length ? <FleetTable vans={visible} jobs={fleet.data.jobs} onSelect={v => { setSelected(v); setMode("view"); setProblem(null); }} /> : <p style={{ padding: 24 }}>{fleet.data.vans.length ? "No vans match these filters." : "No vans yet. Add your first van."}</p>}</section></>}
+    {van && <FleetDetails key={`details:${van.id}`} van={van} open={mode === "view"} jobs={fleet.data?.jobs ?? []} revision={fleet.revision} onClose={() => setMode(null)} onEdit={() => setMode("edit")} onDelete={() => { setProblem(null); setConfirm(true); }} />}
     {formTarget && <FleetForm key={formTarget.key} van={formTarget.van} open onClose={() => setMode(mode === "edit" ? "view" : null)} onSaved={saved} onRefresh={refresh} technicians={fleet.data?.technicians ?? []} />}
     <FleetConfirmation open={confirm} title={`Permanently delete ${van?.code}?`} onClose={() => setConfirm(false)} onConfirm={() => void remove()} action="Permanently delete" pending={pending}>
-      <p>Van {van?.code}, registration plate {van?.plate ?? "not recorded"}. This permanently removes an unused van and its empty inventory location.</p><p>Stock, equipment, reservations, jobs, movements, restock records, corrections and protected import records block deletion. For a van with history, use Edit → Sold when appropriate.</p><div ref={deleteProblemRef} tabIndex={-1}>{problem && <MessageBar intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar>}</div>
+      <p>Van {van?.code}, registration plate {van?.plate ?? "not recorded"}. This permanently removes an unused van and its empty inventory location.</p><p>Stock, equipment, reservations, jobs, movements, restock records, corrections and protected import records block deletion. For a van with history, use Edit → Sold when appropriate.</p>
+      <div ref={deleteProblemRef} tabIndex={-1}>{problem && <>
+        <MessageBar intent="error"><MessageBarBody>{problem.message}</MessageBarBody></MessageBar>
+        {problem.dependencies.length > 0 && <ul className={styles.dependencyList}>{problem.dependencies.map((dependency) => <li key={dependency}>{dependency}</li>)}</ul>}
+      </>}</div>
     </FleetConfirmation>
   </div>;
+}
+
+function toDeleteProblem(error: unknown): DeleteProblem {
+  const message = error instanceof Error ? error.message : "Unable to confirm deletion. Refresh before retrying.";
+  const details = error instanceof ApiRequestError && typeof error.details === "object" && error.details !== null
+    ? error.details as { dependencies?: unknown }
+    : null;
+  const rawDependencies = Array.isArray(details?.dependencies)
+    ? details.dependencies.filter((value): value is string => typeof value === "string")
+    : [];
+  const dependencies = rawDependencies.map(formatDependency);
+  const countSentence = rawDependencies.length ? `: ${rawDependencies.join(", ")}.` : "";
+  return { message: countSentence ? message.replace(countSentence, ".") : message, dependencies };
+}
+
+function formatDependency(dependency: string) {
+  const match = /^(\d+)\s+(.+)$/.exec(dependency);
+  if (!match) return dependency;
+  const [, count, label] = match;
+  const noun = Number(count) === 1 ? label.replace(/s$/, "") : label;
+  return `${count} ${noun}`;
 }
