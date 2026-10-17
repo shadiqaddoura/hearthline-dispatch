@@ -63,7 +63,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
   },
   {
     value: "products",
-    label: "Products",
+    label: "Products Catalog",
     icon: bundleIcon(TagMultipleFilled, TagMultipleRegular),
     section: "Stock",
     status: "available",

@@ -8,8 +8,10 @@ export const HUB_LOCATION_NAME = "Hub";
 export const vanInclude = { currentTechnician: true } as const;
 export type VanRow = Prisma.VanGetPayload<{ include: typeof vanInclude }>;
 
-/** The hub is a location so movements can name it; its shelves are not counted yet. */
+/** Preserve the canonical hub identity, including after warehouse setup renames it. */
 export async function getHubLocation(tx: Tx) {
+  const existing = await tx.location.findFirst({ where: { kind: "HUB" } });
+  if (existing) return existing;
   return tx.location.upsert({
     where: { name: HUB_LOCATION_NAME },
     create: { name: HUB_LOCATION_NAME, kind: "HUB" },

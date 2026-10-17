@@ -92,7 +92,7 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation }: 
       wide
       footer={
         <>
-          <Button appearance="primary" onClick={() => onOperation("receive")}>Add stock</Button>
+          {row?.kind !== "HUB" && <Button appearance="primary" onClick={() => onOperation("receive")}>Add stock</Button>}
           <Button onClick={() => onOperation("correct")}>Correct count</Button>
           {line?.serialised && <Button onClick={() => onOperation("verify")}>Verify serials</Button>}
           <Button onClick={() => onOperation("transfer")}>Transfer stock</Button>

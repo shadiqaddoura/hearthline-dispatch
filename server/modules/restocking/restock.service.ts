@@ -84,12 +84,12 @@ export async function confirmRestockCollection(restockJobId: string, input: Coll
     const job = await tx.restockJob.findUnique({ where: { id: restockJobId }, include: { van: true } });
     if (!job) throw notFound("Restock job", restockJobId);
 
-    await lockLocations(tx, [job.van.locationId]);
+    const hub = await getHubLocation(tx);
+    await lockLocations(tx, [job.van.locationId, hub.id]);
     await lockRestockJob(tx, restockJobId);
     const current = await tx.restockJob.findUniqueOrThrow({ where: { id: restockJobId } });
     if (current.status !== "OPEN") throw invalidState("This restock job is closed");
 
-    const hub = await getHubLocation(tx);
     const van = { locationId: job.van.locationId };
 
     for (const line of input.collected) {

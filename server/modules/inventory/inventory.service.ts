@@ -41,7 +41,7 @@ export async function getVanStock(vanId: string): Promise<LocationStockDto> {
   return getLocationStock(van.locationId);
 }
 
-/** All counted locations. Hub locations are shown as receipt sources; their shelf stock is not tracked. */
+/** All locations, including warehouses awaiting their first physical count. */
 export async function listInventoryLocations(): Promise<InventoryLocationDto[]> {
   const locations = await prisma.location.findMany({
     include: { van: true },
@@ -51,15 +51,16 @@ export async function listInventoryLocations(): Promise<InventoryLocationDto[]> 
     locationId: location.id,
     locationName: location.name,
     kind: location.kind,
+    inventoryTracked: location.kind === "VAN" || location.inventoryTracked,
     vanId: location.van?.id ?? null,
-    lines: location.kind === "VAN" ? await buildStockLines(prisma, location.id) : [],
+    lines: location.kind === "VAN" || location.inventoryTracked ? await buildStockLines(prisma, location.id) : [],
   })));
 }
 
 export async function getInventoryDetail(locationId: string, productId: string): Promise<InventoryDetailDto> {
-  const location = await prisma.location.findUnique({ where: { id: locationId }, select: { id: true, kind: true } });
+  const location = await prisma.location.findUnique({ where: { id: locationId }, select: { id: true, kind: true, inventoryTracked: true } });
   if (!location) throw notFound("Location", locationId);
-  if (location.kind !== "VAN") throw invalidState("Inventory details are available for counted van locations only");
+  if (location.kind !== "VAN" && !location.inventoryTracked) throw invalidState("Configure the warehouse physical count first");
   await requireProduct(prisma, productId);
   const [units, reservations, movements] = await Promise.all([
     prisma.equipmentUnit.findMany({
@@ -127,7 +128,7 @@ export async function receiveStock(input: ReceiveStockRequest): Promise<StockMov
       if (location.kind !== "VAN") throw invalidState("Receipts can only be added to a counted van location");
       if (!hub) throw invalidState("No warehouse location is configured for receipts");
       await requireProduct(tx, input.productId);
-      await lockLocations(tx, [location.id]);
+      await lockLocations(tx, [location.id, hub.id]);
       const received = await moveStock(tx, {
         type: "RESTOCK_COLLECTION",
         productId: input.productId,
@@ -199,7 +200,7 @@ export async function correctStock(input: CorrectStockRequest): Promise<StockCor
   const correction = await runInTransaction(async (tx) => {
     const location = await tx.location.findUnique({ where: { id: input.locationId } });
     if (!location) throw notFound("Location", input.locationId);
-    if (location.kind !== "VAN") throw invalidState("Only van stock is counted in this milestone");
+    if (location.kind !== "VAN" && !location.inventoryTracked) throw invalidState("Configure the warehouse physical count first");
     await requireProduct(tx, input.productId);
 
     await lockLocations(tx, [input.locationId]);

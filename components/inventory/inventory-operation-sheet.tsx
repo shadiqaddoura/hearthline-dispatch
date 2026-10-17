@@ -90,7 +90,7 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
       </Field>}
       {operation !== "verify" && <Field label="Reason or reference" required={operation === "receive" || operation === "correct"} hint={operation === "transfer" ? "Optional" : undefined}><Textarea value={note} onChange={(_, data) => update(setNote)(data.value)} /></Field>}
       <Field label="Recorded by" required><Input value={actor} onChange={(_, data) => update(setActor)(data.value)} autoComplete="name" /></Field>
-      {operation === "receive" && !product?.serialised && <MessageBar intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products.</MessageBarBody></MessageBar>}
+      {operation === "receive" && !product?.serialised && <MessageBar intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products Catalog.</MessageBarBody></MessageBar>}
       {operation === "correct" && <MessageBar intent="warning"><MessageBarBody>A count records what is physically present. Units with known serials cannot be silently written off. Imported negative balances are reconciled against the physical count, without creating units for the accounting difference. If the count is below known serialised units, use the separate missing-device reporting and recovery workflow; it is not implemented in Inventory.</MessageBarBody></MessageBar>}
     </form>}
   </FleetSheet>;

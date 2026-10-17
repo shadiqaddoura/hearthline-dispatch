@@ -1,5 +1,6 @@
 import type {
   CorrectStockRequest,
+  CreateWarehouseRequest,
   InventoryDetailDto,
   InventoryLocationDto,
   ReceiveStockRequest,
@@ -11,6 +12,7 @@ import type {
 import { getJson, sendJson } from "./client";
 
 export const inventoryApi = {
+  createWarehouse: (input: CreateWarehouseRequest) => sendJson<{ locationId: string }>("POST", "/api/inventory/warehouses", input),
   list: (signal?: AbortSignal) => getJson<InventoryLocationDto[]>("/api/inventory", { signal }),
   detail: (locationId: string, productId: string, signal?: AbortSignal) =>
     getJson<InventoryDetailDto>(`/api/inventory/${encodeURIComponent(locationId)}/${encodeURIComponent(productId)}`, { signal }),
