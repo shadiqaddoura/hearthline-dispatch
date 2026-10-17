@@ -6,10 +6,6 @@ const nextConfig: NextConfig = {
     agentFeedback: false,
   },
   cacheComponents: true,
-  // The sign-in screen is the entry point.
-  async redirects() {
-    return [{ source: "/", destination: "/sign-in", permanent: false }];
-  },
   partialPrefetching: true,
   turbopack: {
     rules: {
