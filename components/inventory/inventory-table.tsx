@@ -70,7 +70,7 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
         <TableHeaderCell className={styles.numericHeader}><div>Broken</div></TableHeaderCell><TableHeaderCell className={mergeClasses(styles.numericHeader, styles.verificationHeader)}><div>Awaiting serial verification</div></TableHeaderCell>
       </TableRow></TableHeader>
       <TableBody>{rows.length ? rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`}>
-        <TableCell><Button appearance="subtle" onClick={() => onSelect(row)}>{row.locationName}</Button><Text as="p" size={200}>{row.kind === "HUB" ? "Warehouse" : "Van"}</Text></TableCell>
+        <TableCell><Button appearance="subtle" onClick={() => onSelect(row)}>{row.locationName}</Button></TableCell>
         <TableCell className={styles.productCell}><Button className={styles.productButton} appearance="subtle" onClick={() => onSelect(row)}><span className={styles.productName}>{row.line.name}</span><Text as="span" size={200} className={styles.sku}>{row.line.sku}</Text></Button></TableCell>
         <TableCell>{row.line.baseUnit}</TableCell>
         <TableCell className={styles.numericCell}><Quantity value={row.line.working} negative={row.line.working < 0} /></TableCell>

@@ -17,6 +17,7 @@ const stylesHook = makeStyles({
   toolbar: { display: "flex", flexWrap: "wrap", alignItems: "end", gap: tokens.spacingHorizontalM },
   surface: { backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusLarge, boxShadow: tokens.shadow2, overflow: "hidden" },
   tableHeading: { padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalL} 0` },
+  locationActions: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalM },
 });
 
 type SortKey = "location" | "product" | "working" | "available";
@@ -87,7 +88,7 @@ export function InventoryView() {
             <TableCell>{location.locationName}</TableCell>
             <TableCell>{location.kind === "HUB" ? "Warehouse" : "Van"}</TableCell>
             <TableCell>{location.kind === "HUB" && !location.inventoryTracked ? "Awaiting physical opening count" : "Stock tracked"}</TableCell>
-            <TableCell><Button size="small" onClick={() => setLocationFilter(location.locationId)}>View stock</Button>{location.vanId && <a href="/fleet">Manage van in Fleet</a>}</TableCell>
+            <TableCell><div className={styles.locationActions}><Button size="small" onClick={() => setLocationFilter(location.locationId)}>View stock</Button>{location.vanId && <a href="/fleet">Manage van in Fleet</a>}</div></TableCell>
           </TableRow>)}</TableBody>
         </Table>
       </div>
