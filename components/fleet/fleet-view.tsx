@@ -32,6 +32,7 @@ export function FleetView() {
   const deleteProblemRef = useRef<HTMLDivElement>(null);
   const restore = useRestoreFocusTarget();
   const van = fleet.data?.vans.find(v => v.id === selected?.id) ?? selected;
+  const formTarget = mode === "create" ? { key: "create", van: null } : mode === "edit" && van ? { key: `edit:${van.id}`, van } : null;
   const refresh = () => { fleet.refresh(); window.dispatchEvent(new Event("fleet-changed")); };
   const saved = (v: VanDto) => { setSelected(v); setMode("view"); setNotice(`${v.code} saved.`); refresh(); };
   const remove = async () => {
@@ -58,8 +59,8 @@ export function FleetView() {
       <Button onClick={refresh}>Refresh</Button>
     </div>
     {fleet.loading ? <Spinner label="Loading fleet" /> : fleet.data && <><Text size={200}>{visible.length} of {fleet.data.vans.length} vans</Text><section className={styles.surface}>{visible.length ? <FleetTable vans={visible} jobs={fleet.data.jobs} onSelect={v => { setSelected(v); setMode("view"); setProblem(""); }} /> : <p style={{ padding: 24 }}>{fleet.data.vans.length ? "No vans match these filters." : "No vans yet. Add your first van."}</p>}</section></>}
-    {van && <FleetDetails key={van.id} van={van} open={mode === "view"} jobs={fleet.data?.jobs ?? []} revision={fleet.revision} onClose={() => setMode(null)} onEdit={() => setMode("edit")} onDelete={() => { setProblem(""); setConfirm(true); }} />}
-    {(mode === "create" || mode === "edit") && <FleetForm key={mode === "create" ? "new" : van?.id} van={mode === "edit" ? van : null} open onClose={() => setMode(mode === "edit" ? "view" : null)} onSaved={saved} onRefresh={refresh} technicians={fleet.data?.technicians ?? []} />}
+    {van && <FleetDetails key={`details:${van.id}`} van={van} open={mode === "view"} jobs={fleet.data?.jobs ?? []} revision={fleet.revision} onClose={() => setMode(null)} onEdit={() => setMode("edit")} onDelete={() => { setProblem(""); setConfirm(true); }} />}
+    {formTarget && <FleetForm key={formTarget.key} van={formTarget.van} open onClose={() => setMode(mode === "edit" ? "view" : null)} onSaved={saved} onRefresh={refresh} technicians={fleet.data?.technicians ?? []} />}
     <FleetConfirmation open={confirm} title={`Permanently delete ${van?.code}?`} onClose={() => setConfirm(false)} onConfirm={() => void remove()} action="Permanently delete" pending={pending}>
       <p>Van {van?.code}, registration plate {van?.plate ?? "not recorded"}. This permanently removes an unused van and its empty inventory location.</p><p>Stock, equipment, reservations, jobs, movements, restock records, corrections and protected import records block deletion. For a van with history, use Edit → Sold when appropriate.</p><div ref={deleteProblemRef} tabIndex={-1}>{problem && <MessageBar intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar>}</div>
     </FleetConfirmation>
