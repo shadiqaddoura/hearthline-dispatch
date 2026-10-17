@@ -2,6 +2,9 @@
 import { z } from "zod";
 
 export type ApiErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "RATE_LIMITED"
   | "VALIDATION_FAILED"
   | "NOT_FOUND"
   | "INVALID_STATE"
@@ -22,7 +25,7 @@ export interface ApiFailure {
 export const idSchema = z.string().trim().min(1);
 /** Calendar day, "YYYY-MM-DD". */
 export const isoDateSchema = z.iso.date();
-/** Who performed an action. There is no authentication yet, so callers name themselves. */
+/** Internal service audit identity. HTTP handlers always overwrite this from the session. */
 export const actorSchema = z.string().trim().min(1, "Say who is doing this");
 export const positiveIntSchema = z.number().int().positive();
 export const serialsSchema = z.array(z.string().trim().min(1)).optional();

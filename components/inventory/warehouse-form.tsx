@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthUser } from "@/components/shell/auth-user-provider";
+
 import { useRef, useState, type FormEvent } from "react";
 import { Button, Checkbox, Field, Input, MessageBar, MessageBarBody, MessageBarTitle, Spinner, Text, Textarea, makeStyles, tokens } from "@fluentui/react-components";
 import { FleetSheet } from "@/components/fleet/fleet-sheet";
@@ -28,7 +30,7 @@ export function WarehouseForm({ products, existingName, onClose, onSaved }: {
 }) {
   const styles = useStyles();
   const [name, setName] = useState(existingName ?? "");
-  const [actor, setActor] = useState("");
+  const actor = useAuthUser().name;
   const [note, setNote] = useState("");
   const [counts, setCounts] = useState<Record<string, { quantity: string; brokenQuantity: string }>>({});
   const [problem, setProblem] = useState("");
@@ -73,7 +75,7 @@ export function WarehouseForm({ products, existingName, onClose, onSaved }: {
           <Field label={`Broken physical quantity (${product.baseUnit})`} required><Input aria-label={`${product.sku} broken quantity`} type="number" required min={0} max={100000} step={1} disabled={pending} value={counts[product.id].brokenQuantity} onChange={(_, data) => setCounts((previous) => ({ ...previous, [product.id]: { ...previous[product.id], brokenQuantity: data.value } }))} /></Field>
         </div>}
       </div>)}
-      <Field label="Recorded by" required><Input required disabled={pending} value={actor} onChange={(_, data) => setActor(data.value)} /></Field>
+      <Field label="Recorded by" required><Input required disabled={pending} value={actor} readOnly /></Field>
       <Field label="Opening count reason or reference" required><Textarea required minLength={3} maxLength={500} disabled={pending} value={note} onChange={(_, data) => setNote(data.value)} /></Field>
     </form>
   </FleetSheet>;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useAuthUser } from "./auth-user-provider";
 import {
   Avatar,
   Badge,
@@ -44,7 +45,7 @@ const useStyles = makeStyles({
     whiteSpace: "nowrap",
   },
   account: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, flexShrink: 0 },
-  demoBadge: { flexShrink: 0, whiteSpace: "nowrap" },
+  roleBadge: { flexShrink: 0, whiteSpace: "nowrap" },
   // Phones get the short label; the title truncates before the badge does.
   wideLabel: { "@media (max-width: 479px)": { display: "none" } },
   narrowLabel: { display: "none", "@media (max-width: 479px)": { display: "inline" } },
@@ -59,7 +60,18 @@ interface AppHeaderProps {
 
 export function AppHeader({ title, navOpen, onToggleNav }: AppHeaderProps) {
   const styles = useStyles();
-  const router = useRouter();
+  const user = useAuthUser();
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const signOut = async () => {
+    setSigningOut(true);
+    setLogoutFailed(false);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Logout failed");
+      window.location.replace("/sign-in");
+    } catch { setLogoutFailed(true); setSigningOut(false); }
+  };
   const restoreFocusTarget = useRestoreFocusTarget();
 
   return (
@@ -75,29 +87,29 @@ export function AppHeader({ title, navOpen, onToggleNav }: AppHeaderProps) {
         {title}
       </Text>
       <div className={styles.account}>
-        <Badge appearance="tint" color="warning" className={styles.demoBadge}>
-          <span className={styles.wideLabel}>Demo session</span>
-          <span className={styles.narrowLabel}>Demo</span>
+        <Badge appearance="tint" color="brand" className={styles.roleBadge}>
+          {user.role === "ADMIN" ? "Admin" : "Operations"}
         </Badge>
         <Menu>
           <MenuTrigger disableButtonEnhancement>
-            <Button appearance="subtle" shape="circular" aria-label="Demo session: not signed in" icon={<Avatar size={28} />} />
+            <Button appearance="subtle" shape="circular" aria-label={`Account: ${user.name}`} icon={<Avatar name={user.name} size={28} />} />
           </MenuTrigger>
           <MenuPopover>
             <MenuList>
               <MenuGroup>
-                <MenuGroupHeader>Demo session</MenuGroupHeader>
+                <MenuGroupHeader>{user.name}</MenuGroupHeader>
                 <Text size={200} className={styles.menuNote}>
-                  You are not signed in. Authentication isn&apos;t built yet, so anyone with the link can view this preview.
+                  {user.email}
                 </Text>
               </MenuGroup>
               <MenuDivider />
-              <MenuItem icon={<SignOutRegular />} onClick={() => router.push("/sign-in")}>
-                Leave demo
+              <MenuItem icon={<SignOutRegular />} disabled={signingOut} onClick={() => void signOut()}>
+                {signingOut ? "Signing out…" : "Sign out"}
               </MenuItem>
             </MenuList>
           </MenuPopover>
         </Menu>
+        {logoutFailed && <Text role="alert">Sign out failed. Try again.</Text>}
       </div>
     </header>
   );

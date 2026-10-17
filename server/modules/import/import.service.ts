@@ -14,7 +14,7 @@ import { readStockBook } from "./read-workbook";
 //   read rows → normalise → validate/plan → persist → apply bookings → report issues
 // Used by scripts/import-book.ts and POST /api/imports.
 
-export async function importStockBook(data: ArrayBuffer, fileName: string): Promise<ImportBatchDto> {
+export async function importStockBook(data: ArrayBuffer, fileName: string, actor = "stock-book import"): Promise<ImportBatchDto> {
   const previous = await prisma.importBatch.findFirst({ orderBy: { importedAt: "desc" } });
   if (previous) {
     // A second load would add the same stock again. Reset the database to re-import.
@@ -23,7 +23,7 @@ export async function importStockBook(data: ArrayBuffer, fileName: string): Prom
 
   const book = await readStockBook(data);
   const plan = buildImportPlan(book);
-  const persisted = await runInTransaction((tx) => persistPlan(tx, plan, book, fileName), { timeoutMs: 120_000 });
+  const persisted = await runInTransaction((tx) => persistPlan(tx, plan, book, fileName, actor), { timeoutMs: 120_000 });
 
   // Booked visits go through the normal dispatch rules: a booking only becomes an
   // assignment if the van is in service, has a driver and has eligible stock.
@@ -42,7 +42,7 @@ export async function importStockBook(data: ArrayBuffer, fileName: string): Prom
       continue;
     }
     try {
-      await assignJob(booking.jobId, { vanId: van.id, scheduledFor: booking.scheduledFor ?? undefined, assignedBy: "stock-book import" });
+      await assignJob(booking.jobId, { vanId: van.id, scheduledFor: booking.scheduledFor ?? undefined, assignedBy: actor });
       assigned++;
     } catch (error) {
       if (!(error instanceof AppError)) throw error;

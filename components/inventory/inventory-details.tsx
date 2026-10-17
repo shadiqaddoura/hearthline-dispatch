@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthUser } from "@/components/shell/auth-user-provider";
+
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -66,6 +68,7 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation, on
   onVerified: () => void;
 }) {
   const styles = useStyles();
+  const user = useAuthUser();
   const [detail, setDetail] = useState<InventoryDetailDto | null>(null);
   const [problem, setProblem] = useState("");
   const [verificationDrafts, setVerificationDrafts] = useState<Record<string, { serialNumber: string; verifiedBy: string }>>({});
@@ -103,7 +106,7 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation, on
     if (!row || verifyingUnitId) return;
     const draft = verificationDrafts[unit.id] ?? { serialNumber: "", verifiedBy: "" };
     const serialNumber = draft.serialNumber.trim();
-    const verifiedBy = draft.verifiedBy.trim();
+    const verifiedBy = user.name;
     if (!serialNumber || !verifiedBy) {
       setVerificationErrors((current) => ({ ...current, [unit.id]: !serialNumber ? "Enter a serial number." : "Enter who recorded this verification." }));
       return;
@@ -186,7 +189,7 @@ export function InventoryDetails({ row, open, revision, onClose, onOperation, on
                             <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <Input className={styles.verifyInput} size="small" value={verificationDrafts[unit.id]?.serialNumber ?? ""} aria-label="Serial number for unit awaiting verification" aria-invalid={Boolean(verificationErrors[unit.id])} aria-describedby={verificationErrors[unit.id] ? `verification-error-${unit.id}` : undefined} disabled={verifyingUnitId !== null} onChange={(_, data) => updateVerificationDraft(unit.id, "serialNumber", data.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void verifyUnit(unit); } }} /> : unit.serialNumber ?? "—"}</TableCell>
                             <TableCell className={styles.cell}>{unit.verification === "VERIFIED" ? "Verified" : "Needs verification"}</TableCell>
                             <TableCell className={styles.cell}>{unit.condition}</TableCell>
-                            <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <Input className={styles.recordedByInput} size="small" value={verificationDrafts[unit.id]?.verifiedBy ?? ""} aria-label="Recorded by for unit awaiting verification" aria-invalid={Boolean(verificationErrors[unit.id])} aria-describedby={verificationErrors[unit.id] ? `verification-error-${unit.id}` : undefined} disabled={verifyingUnitId !== null} onChange={(_, data) => updateVerificationDraft(unit.id, "verifiedBy", data.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void verifyUnit(unit); } }} /> : unit.verifiedBy ?? "—"}</TableCell>
+                            <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? user.name : unit.verifiedBy ?? "—"}</TableCell>
                             <TableCell className={styles.cell}>{unit.verifiedAt ? <Timestamp value={unit.verifiedAt} className={styles.timestamp} mutedClassName={styles.mutedTime} /> : "—"}</TableCell>
                             <TableCell className={styles.cell}>{unit.verification === "NEEDS_VERIFICATION" ? <>
                               <Button size="small" appearance="subtle" className={styles.verifyAction} icon={verifyingUnitId === unit.id ? <Spinner size="tiny" label="Saving verification" /> : <CheckmarkRegular />} aria-label="Verify serial" title="Verify serial" disabled={verifyingUnitId !== null} onClick={() => void verifyUnit(unit)} />

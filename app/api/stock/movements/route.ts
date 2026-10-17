@@ -9,5 +9,5 @@ const query = z.object({
 });
 
 export async function GET(request: Request) {
-  return handle(async () => listMovements(readQuery(request, query)));
+  return handle(request, async () => listMovements(readQuery(request, query)));
 }

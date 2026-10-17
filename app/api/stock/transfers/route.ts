@@ -3,5 +3,5 @@ import { transferStock } from "@/server/modules/inventory/inventory.service";
 import { transferStockRequest } from "@/lib/contracts/inventory";
 
 export async function POST(request: Request) {
-  return handle(async () => transferStock(await readJson(request, transferStockRequest)), 201);
+  return handle(request, async () => transferStock(await readJson(request, transferStockRequest, "performedBy")), 201);
 }

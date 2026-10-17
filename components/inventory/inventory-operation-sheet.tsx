@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthUser } from "@/components/shell/auth-user-provider";
+
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Input, makeStyles, MessageBar, MessageBarBody, Select, Spinner, Textarea, tokens } from "@fluentui/react-components";
 import type { ProductDto } from "@/lib/contracts/products";
@@ -48,7 +50,7 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
   const [condition, setCondition] = useState<StockCondition>("WORKING");
   const [quantity, setQuantity] = useState(operation === "correct" ? String(row?.line.working ?? 0) : "1");
   const [serials, setSerials] = useState("");
-  const [actor, setActor] = useState("");
+  const actor = useAuthUser().name;
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
   const [pending, setPending] = useState(false);
@@ -70,7 +72,6 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
     setCondition("WORKING");
     setQuantity(operation === "correct" ? String(row?.line.working ?? 0) : "1");
     setSerials("");
-    setActor("");
     setNote("");
     setProblem("");
     setDirty(false);
@@ -132,7 +133,7 @@ export function InventoryOperationSheet({ operation, row, locations, products, o
         <Textarea value={serials} onChange={(_, data) => update(setSerials)(data.value)} disabled={operation !== "verify" && !product?.serialised && !row?.line.serialised} resize="vertical" />
       </Field>}
       {operation !== "verify" && <Field label="Reason or reference" required={operation === "receive" || operation === "correct"} hint={operation === "transfer" ? "Optional" : undefined}><Textarea value={note} onChange={(_, data) => update(setNote)(data.value)} /></Field>}
-      <Field label="Recorded by" required><Input value={actor} onChange={(_, data) => update(setActor)(data.value)} autoComplete="name" /></Field>
+      <Field label="Recorded by" required><Input value={actor} readOnly autoComplete="name" /></Field>
       {operation === "receive" && !product?.serialised && <MessageBar className={styles.message} intent="info"><MessageBarBody>Only existing catalogue products can receive stock. Product setup stays in Products Catalog.</MessageBarBody></MessageBar>}
       {operation === "correct" && <MessageBar className={styles.message} intent="warning"><MessageBarBody>A count records what is physically present. Units with known serials cannot be silently written off. Imported negative balances are reconciled against the physical count, without creating units for the accounting difference. If the count is below known serialised units, use the separate missing-device reporting and recovery workflow; it is not implemented in Inventory.</MessageBarBody></MessageBar>}
     </form>}

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const signInSchema = z.object({
   email: z.string().trim().min(1, "Enter your email address").pipe(z.email("Enter an email address like name@example.com")),
-  password: z.string().min(1, "Enter your password"),
+  password: z.string().min(1, "Enter your password").max(1024),
 });
 
 export type SignInCredentials = z.input<typeof signInSchema>;
@@ -24,12 +24,12 @@ export function validateSignIn(values: SignInCredentials): SignInFieldErrors {
 export type SignInResult = { ok: true } | { ok: false; message: string };
 export type SignInHandler = (credentials: SignInCredentials) => Promise<SignInResult>;
 
-export const AUTH_NOT_CONNECTED_MESSAGE =
-  "Sign-in isn't connected yet. This preview doesn't check or send your credentials. Use the demo entry below to look around.";
-
-/**
- * Hearthline has no authentication yet. This stands where a real sign-in call
- * will go: it never checks the credentials, never sends them anywhere, and
- * always reports that sign-in is unavailable.
- */
-export const previewSignIn: SignInHandler = async () => ({ ok: false, message: AUTH_NOT_CONNECTED_MESSAGE });
+/** Calls the server; the session token is only ever delivered in an HttpOnly cookie. */
+export const signIn: SignInHandler = async (credentials) => {
+  const response = await fetch("/api/auth/sign-in", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credentials),
+  });
+  if (response.ok) return { ok: true };
+  const result = await response.json();
+  return { ok: false, message: result.error?.message ?? "Unable to sign in. Please try again." };
+};

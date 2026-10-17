@@ -1,6 +1,6 @@
 # Hearthline Dispatch
 
-The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (Microsoft Fluent 2) has a sign-in preview, the application shell, a Dispatch board with manual assignment and scheduling, a read-only Restocking page, a Products page with create, edit and delete, and an Inventory page for receiving, corrections, serial verification and transfers. See [UI](#ui-fluent-2).
+The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (Microsoft Fluent 2) has a secure sign-in screen, the application shell, a Dispatch board with manual assignment and scheduling, a read-only Restocking page, a Products page with create, edit and delete, and an Inventory page for receiving, corrections, serial verification and transfers. See [UI](#ui-fluent-2).
 
 ## Run it
 
@@ -15,7 +15,7 @@ npm run import:book -- docs/04-van-stock-book.xlsx
 npm run dev                      # app at http://localhost:3000, API at /api
 ```
 
-Open http://localhost:3000. It redirects to the sign-in preview; **Continue to demo** opens the Products page.
+Open http://localhost:3000. It redirects to sign-in. First apply migrations and provision the Admin and Operations accounts using [Authentication setup](docs/authentication.md). Both accounts have full access.
 
 After pulling updates, stop the development server and run `npx prisma migrate deploy` followed by `npx prisma generate`, then restart with `npm run dev`. These commands use `DATABASE_URL` from the environment (or `.env`); ensure it targets the intended development database. The Inventory receipt migration adds nullable `stock_movements.operationKey` and its unique index: historical movements retain `NULL`, while new receipt keys prevent duplicate stock on retries. Do not reset an existing database to apply this upgrade.
 
@@ -88,7 +88,7 @@ Each module has a `*.service.ts` (business rules, transactions) and, where it he
 Built with [Fluent UI React v9](https://react.fluentui.dev) (`@fluentui/react-components` 9.74, `@fluentui/react-icons`), Microsoft's React implementation of Fluent 2. It supports React 19 (peer range `<20`).
 
 ```
-app/(auth)/sign-in/page.tsx    sign-in preview
+app/(auth)/sign-in/page.tsx    secure sign-in
 app/(app)/layout.tsx           application shell around every signed-in screen
 app/(app)/dispatch/page.tsx    Dispatch board
 app/(app)/products/page.tsx    Products
@@ -103,7 +103,7 @@ components/restocking/         view (layout and selection), van list, pick list,
 components/products/           view (state), toolbar, table, details panel (with where the product is used), add/edit form and its fields,
                                delete confirmation, success notice, loading/empty/error states, hooks for the list, details, form and delete
 lib/api/                       browser fetch of our own API, unwrapping { data } / { error }
-lib/auth/sign-in.ts            form rules and the preview sign-in handler
+lib/auth/sign-in.ts            form rules and the server sign-in client
 lib/products/catalogue.ts      search and wording rules (pure, unit-tested)
 lib/products/product-form.ts   form text → request, per-field errors (pure, unit-tested)
 lib/products/references.ts     how the records that refer to a product are worded (pure, unit-tested)
@@ -118,7 +118,7 @@ Pages are server components that render one client component; Fluent is used onl
 
 | Question | Decision | Why |
 | --- | --- | --- |
-| Sign-in | **A preview, not authentication.** The form validates input, then always reports that sign-in isn't connected. It never checks credentials or sends them anywhere. **Continue to demo** is a plain link to `/products`. Every app page is open, and the header says "Demo session". | The app has no users or sessions. A fake sign-in would look like security. When authentication is added, it replaces `previewSignIn` and guards the `(app)` routes. |
+| Sign-in | PostgreSQL-backed sessions, secure password hashes, authenticated pages and API routes, and server-verified audit identity. | Admin and Operations both have full access. See [Authentication setup](docs/authentication.md) for provisioning and rotation. |
 | Fluent with the App Router | Fluent's documented setup: a Griffel renderer whose CSS is inserted into the server HTML through `useServerInsertedHTML`, so the first paint is styled. The `fluentui-next-appdir-directive` SWC plugin from the same guide isn't used. | Fluent 9.74 already ships `'use client'` in its modules, and Fluent is only imported from client components. A wasm SWC plugin is tied to one Next version. |
 | Unfinished areas | Fleet and Imports appear in the sidebar with a "Soon" badge, as disabled (`aria-disabled`) buttons with an explanation. | Inventory, Restocking, Products and Dispatch have working screens. |
 | Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
@@ -166,16 +166,16 @@ The only expected development console message is a hydration warning when a brow
 | `GET/PATCH/DELETE /api/products/{id}` | One product with where it is used and what is locked (`ProductDetailDto`); editing (409 `INVALID_STATE` with `details.fieldErrors` for a locked field); deleting (409 `INVALID_STATE` with the references that block it, 409 `CONFLICT` if one appeared mid-delete) |
 | `GET /api/customers` · `technicians` | Reference data |
 
-There is no authentication yet, so write requests name their actor (`assignedBy`, `correctedBy`, …).
+All business API requests require a valid session. Mutations require a matching Origin header. Audit fields (`assignedBy`, `correctedBy`, etc.) are overwritten from the authenticated user; supplied identity is never trusted.
 
 ## Tests
 
-175 tests: 50 unit (availability, restock formula and pick quantities, normalisation, import snapshot handling, catalogue search and wording, sign-in validation, dispatch waiting time, dates and schedule input), 86 integration tests against real Postgres (including assignment with a schedule, rescheduling without touching stock or the request date, taken positions, past days, repeated and simultaneous saves), and 39 component tests in jsdom (sign-in validation, loading and errors; product search, no-results, empty, error and retry, details; dispatch request selection, eligibility explanations, no eligible van, missing dates, stale eligibility answers, loading, empty and error states; assignment and scheduling dialogs, including stale eligibility, server refusals, unanswered requests and repeated clicks; shell navigation and the demo indicator; Fluent's focus manager under Strict Mode and across routes hidden by `<Activity>`). To keep a database untouched, point `TEST_DATABASE_URL` at a new empty database (the suite applies migrations and clears it). The integration tests cover reservations, cancellation, reassignment, completion retries (sequential and concurrent), concurrent assignments, transfers, corrections, driver changes, the kitchen-display policy, and restocking.
+Backend unit and integration tests cover business rules and authentication against isolated PostgreSQL. Run `npx vitest run --project server`; the suite migrates and clears only `TEST_DATABASE_URL`. Authentication verification and its limitations are documented in [Authentication setup](docs/authentication.md). Legacy jsdom UI tests exist separately and were not run for the authentication change.
 
 ## Not done yet / known limits
 
-- Screens: sign-in (preview), Dispatch board (assignment and scheduling), Restocking (read-only) and Products. The narrow/mobile layouts of Dispatch and Restocking haven't been polished yet. Still to build: confirming restock collection and broken returns on the page, reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
-- No authentication or roles. The sign-in screen is a preview, and every page and API route is open.
+- Screens: sign-in, Dispatch board (assignment and scheduling), Restocking (read-only) and Products. The narrow/mobile layouts of Dispatch and Restocking haven't been polished yet. Still to build: confirming restock collection and broken returns on the page, reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
+- Authentication supports Admin and Operations with equal full access. Self-service password recovery, MFA, and a user-management UI are not included.
 - Products: the review flag and note on a restocking policy can't be cleared from the page (there is no workflow for settling it yet), and a product can't be archived or merged, only deleted while unused. Two people editing the same product at once is last-write-wins on the fields they both change (there is no version check); the SKU, unit and serial rules are still enforced under a row lock.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
 - Completion may use a job's own reservation plus free stock, never stock reserved for another job; recording work that physically used another job's units means reassigning that job first. A lower stock count can still leave assigned jobs short: they are flagged `RESERVATION_SHORTFALL` (all jobs sharing the shortfall, since which one runs short depends on order), not cancelled or reassigned.

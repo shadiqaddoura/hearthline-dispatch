@@ -516,3 +516,46 @@ model ImportIssue {
   @@index([batchId, severity])
   @@map("import_issues")
 }
+
+// Authentication is additive; legacy operational audit strings are retained.
+enum UserRole {
+  ADMIN
+  OPERATIONS
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         UserRole
+  passwordHash String
+  active       Boolean  @default(true)
+  // Stable provisioning slots; null for future users added through other flows.
+  bootstrapKey String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  tokenHash String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model LoginThrottle {
+  key       String   @id
+  attempts  Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("login_throttles")
+}

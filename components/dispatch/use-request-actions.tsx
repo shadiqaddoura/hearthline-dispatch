@@ -1,4 +1,6 @@
 "use client";
+
+import { useAuthUser } from "@/components/shell/auth-user-provider";
 import { useRef, useState } from "react";
 import {
   Button,
@@ -36,7 +38,7 @@ export function useRequestActions({
   const [problem, setProblem] = useState("");
   const [notice, setNotice] = useState("");
   const [reason, setReason] = useState("");
-  const [actor, setActor] = useState("");
+  const actor = useAuthUser().name;
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const openings = useRef(0);
@@ -49,7 +51,6 @@ export function useRequestActions({
     if (!job) return;
     setProblem("");
     setReason("");
-    setActor("");
     setConfirmation({ job, mode });
   };
   const protectedStatus = confirmation?.job.deletionBlockedReason;
@@ -60,7 +61,7 @@ export function useRequestActions({
       (reason.trim().length < 3 || !actor.trim())
     ) {
       setProblem(
-        "Enter your name and a cancellation reason of at least 3 characters.",
+        "Enter a cancellation reason of at least 3 characters.",
       );
       return;
     }
@@ -200,7 +201,7 @@ export function useRequestActions({
                     <Input
                       value={actor}
                       disabled={pending}
-                      onChange={(_, d) => setActor(d.value)}
+                      readOnly
                     />
                   </Field>
                   <Field label="Reason" required>

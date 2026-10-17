@@ -17,6 +17,9 @@ export class AppError extends Error {
 }
 
 export const HTTP_STATUS: Record<ApiErrorCode, number> = {
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  RATE_LIMITED: 429,
   VALIDATION_FAILED: 400,
   NOT_FOUND: 404,
   INVALID_STATE: 409,

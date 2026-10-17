@@ -11,7 +11,7 @@ import type { StockBook } from "./read-workbook";
 // through the stock ledger, so every imported figure has a movement pointing at the
 // source row it came from.
 
-const IMPORTER = "stock-book import";
+
 
 export interface Booking {
   jobId: string;
@@ -21,7 +21,7 @@ export interface Booking {
   ref: RowRef;
 }
 
-export async function persistPlan(tx: Tx, plan: ImportPlan, book: StockBook, fileName: string) {
+export async function persistPlan(tx: Tx, plan: ImportPlan, book: StockBook, fileName: string, actor = "stock-book import") {
   const batch = await tx.importBatch.create({ data: { fileName, summary: {} } });
 
   // Every original row, verbatim, with its sheet and row number.
@@ -124,7 +124,7 @@ export async function persistPlan(tx: Tx, plan: ImportPlan, book: StockBook, fil
         type: "OPENING_BALANCE" as const,
         productId: productIds.get(b.sku)!,
         condition: "WORKING" as const,
-        performedBy: IMPORTER,
+        performedBy: actor,
         importRowId: rowId(b.ref),
         note: `Stock book count of ${b.countedOn}`,
       },
@@ -137,7 +137,7 @@ export async function persistPlan(tx: Tx, plan: ImportPlan, book: StockBook, fil
         type: m.type,
         productId: productIds.get(m.sku)!,
         condition: "WORKING" as const,
-        performedBy: IMPORTER,
+        performedBy: actor,
         importRowId: rowId(m.ref),
         note: `${m.label} on ${m.date}`,
       },
@@ -168,7 +168,7 @@ export async function persistPlan(tx: Tx, plan: ImportPlan, book: StockBook, fil
       from: { branchId: branchId(unit.customer, unit.branch) },
       to: { locationId: vans.get(unit.vanCode!)!.locationId },
       serials: [unit.serial],
-      performedBy: IMPORTER,
+      performedBy: actor,
       importRowId: rowId(unit.ref),
       note: `Pulled out on ${unit.label} (${unit.date})`,
     });

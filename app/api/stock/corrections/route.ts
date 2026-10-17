@@ -3,5 +3,5 @@ import { correctStock } from "@/server/modules/inventory/inventory.service";
 import { correctStockRequest } from "@/lib/contracts/inventory";
 
 export async function POST(request: Request) {
-  return handle(async () => correctStock(await readJson(request, correctStockRequest)), 201);
+  return handle(request, async () => correctStock(await readJson(request, correctStockRequest, "correctedBy")), 201);
 }

@@ -1,4 +1,6 @@
 "use client";
+
+import { useAuthUser } from "@/components/shell/auth-user-provider";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, Field, Input, Select, Textarea, Text, MessageBar, MessageBarBody, Spinner } from "@fluentui/react-components";
 import { createVanRequest, updateVanRequest, type VanDto, type TechnicianDto } from "@/lib/contracts/fleet";
@@ -9,6 +11,7 @@ import { FleetConfirmation } from "./fleet-confirmation";
 export function FleetForm({ van, technicians, open, onClose, onSaved, onRefresh }: {
   van: VanDto | null; technicians: TechnicianDto[]; open: boolean; onClose: () => void; onSaved: (van: VanDto) => void; onRefresh: () => void;
 }) {
+  const user = useAuthUser();
   const [initial] = useState(() => ({ code: van?.code ?? "", plate: van?.plate ?? "", zone: van?.zone ?? "", status: van?.status ?? "ACTIVE", statusNote: van?.statusNote ?? "", technicianId: van?.technician?.id ?? "" }));
   const [values, setValues] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -32,7 +35,7 @@ export function FleetForm({ van, technicians, open, onClose, onSaved, onRefresh 
     if (inFlight.current) return;
     const input = { code: values.code, plate: values.plate.trim() || null, zone: values.zone.trim() || null, status: values.status, statusNote: values.statusNote.trim() || null };
     // Only send changed fields on edit, including the driver: avoid overwriting a concurrent handover.
-    const patch = { ...Object.fromEntries(Object.entries(input).filter(([key, value]) => value !== (key === "code" || key === "status" ? initial[key] : initial[key as "plate" | "zone" | "statusNote"].trim() || null))), ...(values.technicianId !== initial.technicianId ? { technicianId: values.technicianId || null } : {}), updatedBy: "Demo dispatcher" };
+    const patch = { ...Object.fromEntries(Object.entries(input).filter(([key, value]) => value !== (key === "code" || key === "status" ? initial[key] : initial[key as "plate" | "zone" | "statusNote"].trim() || null))), ...(values.technicianId !== initial.technicianId ? { technicianId: values.technicianId || null } : {}), updatedBy: user.name };
     const parsed = van ? updateVanRequest.safeParse(patch) : createVanRequest.safeParse(input);
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map(i => [String(i.path[0] ?? "form"), i.message])));

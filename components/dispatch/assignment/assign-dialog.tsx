@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthUser } from "@/components/shell/auth-user-provider";
+
 import {
   Button,
   Dialog,
@@ -74,13 +76,13 @@ function AssignForm({
   board,
   eligibility,
   onRetryEligibility,
-  initialAssignedBy,
   onClose,
   onAssigned,
   onDataChanged,
 }: Omit<AssignDialogProps, "open">) {
   const styles = useStyles();
-  const form = useAssignment({ job, today: board.date, initialAssignedBy, onAssigned, onDataChanged });
+  const user = useAuthUser();
+  const form = useAssignment({ job, today: board.date, initialAssignedBy: user.name, onAssigned, onDataChanged });
   const titleRef = useRef<HTMLHeadingElement>(null);
   const problemRef = useRef<HTMLDivElement>(null);
   // Changing step removes the focused button. Without this, focus would fall back
@@ -198,7 +200,7 @@ function AssignForm({
                     >
                       <Input
                         value={form.assignedBy}
-                        onChange={(_, data) => form.setAssignedBy(data.value)}
+                        readOnly
                         autoComplete="name"
                       />
                     </Field>
