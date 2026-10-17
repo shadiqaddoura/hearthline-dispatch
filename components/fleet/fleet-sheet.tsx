@@ -9,14 +9,15 @@ const useStyles = makeStyles({
   footer: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS },
 });
 /** Products viewing-sheet dimensions, Fluent overlay/motion and the shared mobile pattern. */
-export function FleetSheet({ title, open, onClose, children, footer, busy = false, wide = false }: {
+export function FleetSheet({ title, open, onClose, children, footer, busy = false, wide = false, className, bodyClassName, footerClassName }: {
   title: string; open: boolean; onClose: () => void; children: ReactNode; footer: ReactNode; busy?: boolean; wide?: boolean;
+  className?: string; bodyClassName?: string; footerClassName?: string;
 }) {
   const styles = useStyles();
   const restore = useRestoreFocusSource();
-  return <OverlayDrawer {...restore} position="end" size="medium" className={mergeClasses(styles.sheet, wide && styles.wideSheet)} open={open} onOpenChange={(_, d) => { if (!d.open) onClose(); }} aria-label={title}>
+  return <OverlayDrawer {...restore} position="end" size="medium" className={mergeClasses(styles.sheet, wide && styles.wideSheet, className)} open={open} onOpenChange={(_, d) => { if (!d.open) onClose(); }} aria-label={title}>
     <DrawerHeader><DrawerHeaderTitle action={<Button appearance="subtle" aria-label="Close sheet" icon={<DismissRegular />} disabled={busy} onClick={onClose} />}>{title}</DrawerHeaderTitle></DrawerHeader>
-    <DrawerBody className={styles.body}>{children}</DrawerBody>
-    <DrawerFooter className={styles.footer}>{footer}</DrawerFooter>
+    <DrawerBody className={mergeClasses(styles.body, bodyClassName)}>{children}</DrawerBody>
+    <DrawerFooter className={mergeClasses(styles.footer, footerClassName)}>{footer}</DrawerFooter>
   </OverlayDrawer>;
 }
