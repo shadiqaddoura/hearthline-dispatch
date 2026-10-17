@@ -15,6 +15,12 @@ export interface DemoCategoryCount {
   count: number;
 }
 
+export interface DemoSeedPlanCount {
+  category: string;
+  willAdd: number;
+  resultingTotal: number;
+}
+
 export interface DemoSectionPreview {
   section: DemoSection;
   title: string;
@@ -22,6 +28,9 @@ export interface DemoSectionPreview {
   records: string[];
   dependencies: string[];
   missingDependencies: string[];
+  seedPlan: DemoSeedPlanCount[];
+  dependencyAdditions: DemoCategoryCount[];
+  seedBlockers: string[];
   seeded: DemoCategoryCount[];
   clearable: DemoCategoryCount[];
   preservedShared: DemoCategoryCount[];

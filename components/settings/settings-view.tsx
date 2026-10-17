@@ -35,6 +35,7 @@ const useStyles = makeStyles({
   list: { margin: 0, paddingInlineStart: tokens.spacingHorizontalL },
   actions: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS, marginTop: "auto" },
   counts: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalXS },
+  plan: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXXS },
   warning: { color: tokens.colorPaletteDarkOrangeForeground1 },
   danger: { ":enabled": { backgroundColor: tokens.colorStatusDangerBackground3, color: tokens.colorNeutralForegroundOnBrand } },
   dialogList: { marginBlock: tokens.spacingVerticalS, paddingInlineStart: tokens.spacingHorizontalL },
@@ -85,8 +86,8 @@ export function SettingsView() {
       )}
 
       <ClearAllData onCleared={(message) => {
-        setOverview({ sections: overview?.sections.map((section) => ({ ...section, seeded: [], clearable: [], preservedShared: [], blockers: [] })) ?? [] });
         setNotice(message);
+        void demoDataApi.overview().then(setOverview).catch((error) => setProblem(messageOf(error)));
       }} />
 
       <ClearDialog section={confirm} pending={pending?.action === "clear"} onClose={() => !pending && setConfirm(null)} onConfirm={() => confirm && void mutate(confirm.section, "clear")} />
@@ -103,13 +104,19 @@ function SectionCard({ section, pending, onSeed, onClear }: { section: DemoSecti
       <div className={styles.cardHeader}><Text as="h2" size={500} weight="semibold">{section.title}</Text><Badge appearance="tint" color={total ? "success" : "informative"}>{total ? `${total} tracked` : "Not seeded"}</Badge></div>
       <Text className={styles.muted}>{section.description}</Text>
       <div><Text weight="semibold">Seed preview</Text><ul className={styles.list}>{section.records.map((record) => <li key={record}>{record}</li>)}</ul></div>
+      <div className={styles.plan} aria-label="Seed counts">
+        <Text weight="semibold">Seed will add · resulting total</Text>
+        {section.seedPlan.map((item) => <Text key={item.category}>{item.category}: {item.willAdd} · {item.resultingTotal}</Text>)}
+      </div>
       {section.dependencies.length > 0 && <div><Text weight="semibold">Required demo data</Text><ul className={styles.list}>{section.dependencies.map((dependency) => <li key={dependency}>{dependency}</li>)}</ul></div>}
       {section.missingDependencies.map((warning) => <Text key={warning} size={200} className={styles.warning}>{warning}</Text>)}
+      {section.dependencyAdditions.length > 0 && <Text size={200} className={styles.muted}>Dependency records to create or restore: {formatCounts(section.dependencyAdditions)}.</Text>}
+      {section.seedBlockers.length > 0 && <MessageBar intent="warning"><MessageBarBody><MessageBarTitle>Seed is blocked</MessageBarTitle>{section.seedBlockers.join(" ")}</MessageBarBody></MessageBar>}
       {section.seeded.length > 0 && <div className={styles.counts}>{section.seeded.map((item) => <Badge key={item.category} appearance="outline">{item.category}: {item.count}</Badge>)}</div>}
       {section.preservedShared.length > 0 && <Text size={200} className={styles.muted}>Clear will preserve shared: {formatCounts(section.preservedShared)}.</Text>}
       {section.blockers.length > 0 && <MessageBar intent="warning"><MessageBarBody><MessageBarTitle>Clear is blocked</MessageBarTitle>{section.blockers.join(" ")}</MessageBarBody></MessageBar>}
       <div className={styles.actions}>
-        <Button appearance="primary" icon={busy && pending?.action === "seed" ? <Spinner size="tiny" appearance="inverted" /> : <DatabaseRegular />} disabled={pending !== null} onClick={onSeed}>Seed</Button>
+        <Button appearance="primary" icon={busy && pending?.action === "seed" ? <Spinner size="tiny" appearance="inverted" /> : <DatabaseRegular />} disabled={pending !== null || section.seedBlockers.length > 0} onClick={onSeed}>Seed</Button>
         <Button icon={<DeleteRegular />} disabled={pending !== null || section.clearable.length === 0 || section.blockers.length > 0} onClick={onClear}>Clear demo data</Button>
       </div>
     </Card>

@@ -6,43 +6,71 @@ import { lockLocations, runInTransaction, type Tx } from "@/server/db/transactio
 import { AppError, invalidState } from "@/server/http/errors";
 import { moveStock } from "@/server/modules/inventory/stock-ledger";
 
+const PRODUCTS: ProductFixture[] = [
+  { sku: "THERMAL-PAPER-80", name: "Thermal Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 },
+  { sku: "ETHERNET-CAT6", name: "Cat6 Ethernet Cable", serialised: false, baseUnit: "each", vanMinimum: 5 },
+  { sku: "RECEIPT-PAPER-57", name: "57mm Receipt Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 50, vanMinimum: 20 },
+  { sku: "HDMI-CABLE-2M", name: "2m HDMI Cable", serialised: false, baseUnit: "each", vanMinimum: 2 },
+  { sku: "USB-C-ADAPTER", name: "USB-C Power Adapter", serialised: false, baseUnit: "each", vanMinimum: 2 },
+  { sku: "RJ45-CONNECTOR", name: "RJ45 Connector Pack", serialised: false, baseUnit: "pack", vanMinimum: 3 },
+  { sku: "CABLE-TIES-200", name: "200mm Cable Ties", serialised: false, baseUnit: "pack", vanMinimum: 4 },
+  { sku: "LABEL-ROLL-60", name: "60mm Label Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 10, vanMinimum: 4 },
+  { sku: "PRINTER-CLEAN-KIT", name: "Receipt Printer Cleaning Kit", serialised: false, baseUnit: "kit", vanMinimum: 1 },
+  { sku: "POS-POWER-SUPPLY", name: "POS Terminal Power Supply", serialised: false, baseUnit: "each", vanMinimum: 2 },
+].map((product, index) => ({ ...product, fixtureKey: index === 0 ? "product.paper" : index === 1 ? "product.cable" : `product.catalog.${String(index + 1).padStart(2, "0")}` }));
+
+const CUSTOMERS = Array.from({ length: 10 }, (_, index) => {
+  const number = index + 1;
+  const account = index === 0 ? "Juniper Table Group" : ["Cedar & Stone Hospitality", "Olive Grove Kitchens", "Northstar Coffee Co.", "Copper Kettle Dining", "Blue Fig Restaurants", "Crown Market Foods", "Maple Street Cafes", "Saffron House Group", "Harborview Catering"][index - 1];
+  return {
+    key: index === 0 ? "customer.main" : `customer.account.${String(number).padStart(2, "0")}`,
+    name: account,
+    branches: index === 0
+      ? [{ key: "customer.downtown", name: "Downtown", zone: "Central" }, { key: "customer.airport", name: "Airport", zone: "South" }]
+      : [
+          { key: `customer.branch.${String(number).padStart(2, "0")}.01`, name: "City Centre", zone: "Central" },
+          { key: `customer.branch.${String(number).padStart(2, "0")}.02`, name: "West End", zone: "West" },
+        ],
+  };
+});
+
+const FLEET = Array.from({ length: 10 }, (_, index) => {
+  const number = index + 12;
+  const suffix = String(index + 1).padStart(2, "0");
+  return {
+    vanKey: index === 0 ? "fleet.van" : `fleet.van.${suffix}`,
+    technicianKey: index === 0 ? "fleet.technician" : `fleet.technician.${suffix}`,
+    locationKey: index === 0 ? "fleet.location" : `fleet.location.${suffix}`,
+    code: `V-${number}`,
+    plate: `38-${String(24716 + index).padStart(5, "0")}`,
+    technician: ["Dana Haddad", "Omar Nasser", "Lina Khalil", "Samir Odeh", "Rana Masri", "Tareq Saleh", "Maya Qasem", "Yousef Hani", "Nour Barakat", "Fadi Khatib"][index],
+    zone: ["Central", "North", "South", "West", "East"][index % 5],
+  };
+});
+
+const DISPATCHES = Array.from({ length: 10 }, (_, index) => {
+  const number = index + 1;
+  const customer = CUSTOMERS[index];
+  const branch = customer.branches[index % customer.branches.length];
+  const product = PRODUCTS[index === 0 ? 0 : (index + 2) % PRODUCTS.length];
+  return {
+    jobKey: index === 0 ? "dispatch.request" : `dispatch.request.${String(number).padStart(2, "0")}`,
+    itemKey: index === 0 ? "dispatch.request.paper" : `dispatch.request.line.${String(number).padStart(2, "0")}`,
+    reference: index === 0 ? "REQ-2026-1042" : `REQ-2026-${1042 + index}`,
+    branchKey: branch.key,
+    productIndex: index === 0 ? 0 : (index + 2) % PRODUCTS.length,
+    notes: `Deliver ${product.name.toLowerCase()} to ${customer.name}, ${branch.name}.`,
+    quantity: index === 0 ? 4 : (index % 5) + 1,
+  };
+});
+
 const DESCRIPTORS: Record<DemoSection, { title: string; description: string; records: string[]; dependencies: string[] }> = {
-  PRODUCTS: {
-    title: "Products Catalog",
-    description: "Two catalog products with restocking rules. No stock is created.",
-    records: ["Thermal Paper Rolls (THERMAL-PAPER-80)", "Cat6 Ethernet Cable (ETHERNET-CAT6)"],
-    dependencies: [],
-  },
-  CUSTOMERS: {
-    title: "Customers and branches",
-    description: "One customer with two branches. No requests or jobs are created.",
-    records: ["Juniper Table Group", "Downtown branch", "Airport branch"],
-    dependencies: [],
-  },
-  FLEET: {
-    title: "Fleet and technicians",
-    description: "One active van, its stock location, and one technician. The van starts empty.",
-    records: ["Van V-12", "Dana Haddad", "Van V-12 stock location"],
-    dependencies: [],
-  },
-  INVENTORY: {
-    title: "Inventory locations and stock",
-    description: "Adds a retry-safe opening balance of thermal paper to the van through the stock ledger.",
-    records: ["25 working thermal paper rolls", "Opening-balance movement"],
-    dependencies: ["Thermal paper product", "Van V-12 and its location"],
-  },
-  DISPATCH: {
-    title: "Dispatch requests and jobs",
-    description: "Creates one unassigned delivery request with one product line.",
-    records: ["Request REQ-2026-1042", "One thermal paper line"],
-    dependencies: ["Thermal paper product", "Juniper Table Group and its Downtown branch"],
-  },
-  RESTOCKING: {
-    title: "Restocking",
-    description: "Creates one open pick list without moving stock or recalculating other vans.",
-    records: ["One open restock job", "Thermal paper pick-list line"],
-    dependencies: ["Thermal paper product", "Van V-12 and its location"],
-  },
+  PRODUCTS: { title: "Products Catalog", description: "Fills the catalog to 10 products with varied units and restocking minimums. No stock is created.", records: PRODUCTS.map((item) => `${item.name} (${item.sku})`), dependencies: [] },
+  CUSTOMERS: { title: "Customers and branches", description: "Fills the customer catalog to 10 accounts with two service branches each. No requests or jobs are created.", records: CUSTOMERS.flatMap((item) => [item.name, ...item.branches.map((branch) => `${item.name} — ${branch.name} branch (${branch.zone})`)]), dependencies: [] },
+  FLEET: { title: "Fleet and technicians", description: "Fills the fleet to 10 active vans, each with its own technician and tracked stock location. Vans start empty.", records: FLEET.flatMap((item) => [`Van ${item.code} (${item.plate})`, item.technician, `${item.code} stock location`]), dependencies: [] },
+  INVENTORY: { title: "Inventory locations and stock", description: "Fills inventory to 10 opening-balance stock positions across 10 van locations and 10 products through the stock ledger.", records: PRODUCTS.map((item, index) => `${item.name}: ${[25, 18, 32, 12, 16, 24, 20, 14, 8, 11][index]} working units at ${FLEET[index].code}`), dependencies: ["10 catalog products", "10 fleet vans and stock locations"] },
+  DISPATCH: { title: "Dispatch requests and jobs", description: "Fills dispatch to 10 unassigned delivery requests with varied customers, branches, and product lines.", records: DISPATCHES.map((item) => `${item.reference}: ${item.notes} (${item.quantity} units)`), dependencies: ["10 catalog products", "10 customers and their branches"] },
+  RESTOCKING: { title: "Restocking", description: "Fills restocking to 10 open pick lists, one per van, without moving stock.", records: FLEET.map((van, index) => `${van.code}: ${PRODUCTS[index].name}, ${10 + index * 2} units`), dependencies: ["10 catalog products", "10 fleet vans and stock locations"] },
 };
 
 const ENTITY_LABEL: Partial<Record<DemoEntityType, string>> = {
@@ -68,6 +96,8 @@ export async function demoDataOverview(): Promise<DemoDataOverview> {
 export async function seedDemoSection(section: DemoSection, actor: string) {
   try {
     const affected = await runInTransaction(async (tx) => {
+      const seedBlockers = await trackedSeedBlockers(tx, section);
+      if (seedBlockers.length) throw invalidState(`Cannot seed ${DESCRIPTORS[section].title}: ${seedBlockers.join(" ")}`, { dependencies: seedBlockers });
       switch (section) {
         case "PRODUCTS": await seedProducts(tx, section); break;
         case "CUSTOMERS": await seedCustomers(tx, section); break;
@@ -109,13 +139,38 @@ export async function clearDemoSection(section: DemoSection, expected?: DemoCate
 }
 
 async function sectionPreview(section: DemoSection): Promise<DemoSectionPreview> {
-  const records = await prisma.demoRecord.findMany({ where: { claims: { some: { section } } }, include: { claims: true } });
+  const [records, primary, dependencies, fixtureIntegrity] = await Promise.all([
+    prisma.demoRecord.findMany({ where: { claims: { some: { section } } }, include: { claims: true } }),
+    prisma.demoRecord.findMany({ where: { claims: { some: { section, kind: "PRIMARY" } } }, select: { fixtureKey: true, entityType: true } }),
+    dependencyAdditions(section),
+    runInTransaction(async (tx) => {
+      const tracked = await tx.demoRecord.findMany({ where: { fixtureKey: { in: sectionFixtureKeys(section) } }, select: { fixtureKey: true, entityType: true, entityId: true, label: true } });
+      const present = new Set<string>();
+      const blockers: string[] = [];
+      for (const record of tracked) {
+        if (await entityExists(tx, record.entityType, record.entityId)) present.add(record.fixtureKey);
+        else if (record.entityType !== "PRODUCT" || !PRODUCTS.some((product) => product.fixtureKey === record.fixtureKey)) {
+          blockers.push(`${record.label} has a provenance marker pointing to a missing ${record.entityType.toLowerCase()} record; it will not be replaced automatically.`);
+        }
+      }
+      return { present, blockers };
+    }),
+  ]);
+  const seedBlockers = fixtureIntegrity.blockers;
   const exclusive = records.filter((record) => record.claims.length === 1);
   const shared = records.filter((record) => record.claims.length > 1);
+  const currentPrimary = countRecords(primary.filter((record) => fixtureIntegrity.present.has(record.fixtureKey)));
   return {
     section,
     ...DESCRIPTORS[section],
-    missingDependencies: await missingDependencies(section),
+    missingDependencies: dependencies.map((item) => `Seed will add or restore ${item.count} ${item.category.toLowerCase()} as declared dependencies.`),
+    seedPlan: targetCounts(section).map(({ category, count }) => {
+      const current = currentPrimary.find((item) => item.category === category)?.count ?? 0;
+      const willAdd = Math.max(0, count - current);
+      return { category, willAdd, resultingTotal: current + willAdd };
+    }),
+    dependencyAdditions: dependencies,
+    seedBlockers,
     seeded: countRecords(records),
     clearable: countRecords(exclusive),
     preservedShared: countRecords(shared),
@@ -123,167 +178,229 @@ async function sectionPreview(section: DemoSection): Promise<DemoSectionPreview>
   };
 }
 
-async function missingDependencies(section: DemoSection) {
-  const keys: Partial<Record<DemoSection, string[]>> = {
-    INVENTORY: ["product.paper", "fleet.van"],
-    DISPATCH: ["product.paper", "customer.downtown"],
-    RESTOCKING: ["product.paper", "fleet.van"],
-  };
-  const needed = keys[section] ?? [];
-  if (!needed.length) return [];
-  const present = new Set((await prisma.demoRecord.findMany({ where: { fixtureKey: { in: needed } }, select: { fixtureKey: true } })).map((row) => row.fixtureKey));
-  return needed.filter((key) => !present.has(key)).map((key) => `Seed will also create and track ${fixtureLabel(key)} as a declared dependency.`);
+function targetCounts(section: DemoSection) {
+  switch (section) {
+    case "PRODUCTS": return [{ category: "Products", count: 10 }];
+    case "CUSTOMERS": return [{ category: "Customers", count: 10 }, { category: "Branches", count: 20 }];
+    case "FLEET": return [{ category: "Vans", count: 10 }, { category: "Technicians", count: 10 }, { category: "Locations", count: 10 }];
+    case "INVENTORY": return [{ category: "Stock balances", count: 10 }];
+    case "DISPATCH": return [{ category: "Requests and jobs", count: 10 }, { category: "Job product lines", count: 10 }];
+    case "RESTOCKING": return [{ category: "Restock jobs", count: 10 }, { category: "Restock lines", count: 10 }];
+  }
 }
 
-function fixtureLabel(key: string) {
-  return ({ "product.paper": "the demo paper product", "fleet.van": "the demo van and fleet records", "customer.downtown": "the demo customer and Downtown branch" } as Record<string, string>)[key] ?? key;
+async function dependencyAdditions(section: DemoSection) {
+  const keys = dependencyKeys(section);
+  if (!keys.length) return [];
+  const existing = await runInTransaction(async (tx) => {
+    const tracked = await tx.demoRecord.findMany({ where: { fixtureKey: { in: keys } }, select: { fixtureKey: true, entityType: true, entityId: true } });
+    const present = new Set<string>();
+    for (const record of tracked) if (await entityExists(tx, record.entityType, record.entityId)) present.add(record.fixtureKey);
+    return present;
+  });
+  const additions = new Map<string, number>();
+  for (const key of keys) {
+    if (existing.has(key)) continue;
+    const category = dependencyCategory(key);
+    additions.set(category, (additions.get(category) ?? 0) + 1);
+  }
+  return [...additions].map(([category, count]) => ({ category, count }));
 }
 
-const PAPER_PRODUCT: ProductCreate = { sku: "THERMAL-PAPER-80", name: "Thermal Paper Rolls", serialised: false, baseUnit: "roll", packUnit: "box", packSize: 20, vanMinimum: 10 };
-const CABLE_PRODUCT: ProductCreate = { sku: "ETHERNET-CAT6", name: "Cat6 Ethernet Cable", serialised: false, baseUnit: "each", vanMinimum: 5 };
+function dependencyKeys(section: DemoSection) {
+  if (section === "INVENTORY" || section === "RESTOCKING") return [...PRODUCTS.map((item) => item.fixtureKey), ...FLEET.flatMap((item) => [item.vanKey, item.technicianKey, item.locationKey])];
+  if (section === "DISPATCH") return [...PRODUCTS.map((item) => item.fixtureKey), ...CUSTOMERS.flatMap((item) => [item.key, ...item.branches.map((branch) => branch.key)])];
+  return [];
+}
+
+function sectionFixtureKeys(section: DemoSection) {
+  const dependencies = dependencyKeys(section);
+  switch (section) {
+    case "PRODUCTS": return PRODUCTS.map((item) => item.fixtureKey);
+    case "CUSTOMERS": return CUSTOMERS.flatMap((item) => [item.key, ...item.branches.map((branch) => branch.key)]);
+    case "FLEET": return FLEET.flatMap((item) => [item.vanKey, item.technicianKey, item.locationKey]);
+    case "INVENTORY": return [...dependencies, ...PRODUCTS.flatMap((_, index) => [index === 0 ? "inventory.paper.balance" : `inventory.balance.${String(index + 1).padStart(2, "0")}`, index === 0 ? "inventory.paper.opening" : `inventory.opening.${String(index + 1).padStart(2, "0")}`])];
+    case "DISPATCH": return [...dependencies, ...DISPATCHES.flatMap((item) => [item.jobKey, item.itemKey])];
+    case "RESTOCKING": return [...dependencies, ...FLEET.flatMap((_, index) => { const suffix = String(index + 1).padStart(2, "0"); return [index === 0 ? "restocking.job" : `restocking.job.${suffix}`, index === 0 ? "restocking.item.paper" : `restocking.item.${suffix}`]; })];
+  }
+}
+
+async function trackedSeedBlockers(tx: Tx, section: DemoSection) {
+  const records = await tx.demoRecord.findMany({ where: { fixtureKey: { in: sectionFixtureKeys(section) } }, select: { fixtureKey: true, entityType: true, entityId: true, label: true } });
+  const blockers: string[] = [];
+  const recoverableProductKeys = new Set(PRODUCTS.map((product) => product.fixtureKey));
+  for (const record of records) if (!(await entityExists(tx, record.entityType, record.entityId)) && !(record.entityType === "PRODUCT" && recoverableProductKeys.has(record.fixtureKey))) {
+    blockers.push(`${record.label} has a provenance marker pointing to a missing ${record.entityType.toLowerCase()} record; it will not be replaced automatically.`);
+  }
+  return blockers;
+}
+
+function dependencyCategory(key: string) {
+  if (key.startsWith("product.")) return "Products";
+  if (key.startsWith("customer.branch.") || key === "customer.downtown" || key === "customer.airport") return "Branches";
+  if (key.startsWith("customer.")) return "Customers";
+  if (key.startsWith("fleet.van")) return "Vans";
+  if (key.startsWith("fleet.technician")) return "Technicians";
+  return "Locations";
+}
 
 async function seedProducts(tx: Tx, section: DemoSection) {
-  await ensureProduct(tx, section, "PRIMARY", "product.paper", PAPER_PRODUCT);
-  await ensureProduct(tx, section, "PRIMARY", "product.cable", CABLE_PRODUCT);
+  for (const product of PRODUCTS) await ensureProduct(tx, section, "PRIMARY", product.fixtureKey, product);
 }
 
 async function seedCustomers(tx: Tx, section: DemoSection) {
-  await ensureBranch(tx, section, "PRIMARY", "customer.downtown", "Downtown", "Central");
-  await ensureBranch(tx, section, "PRIMARY", "customer.airport", "Airport", "South");
+  await ensureCustomerBranches(tx, section, "PRIMARY");
 }
 
-async function seedFleet(tx: Tx, section: DemoSection) { await ensureVan(tx, section, "PRIMARY"); }
+async function seedFleet(tx: Tx, section: DemoSection) { for (let index = 0; index < FLEET.length; index++) await ensureVan(tx, section, "PRIMARY", index); }
 
 async function seedInventory(tx: Tx, section: DemoSection, actor: string) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
-  const van = await ensureVan(tx, section, "DEPENDENCY");
-  const existing = await tx.demoRecord.findUnique({ where: { fixtureKey: "inventory.paper.opening" } });
-  if (existing) { await claim(tx, existing.id, section, "PRIMARY"); return; }
-  await lockLocations(tx, [van.locationId]);
-  const movement = await moveStock(tx, { type: "OPENING_BALANCE", productId: product.id, condition: "WORKING", quantity: 25, to: { locationId: van.locationId }, performedBy: actor, note: "Opening balance recorded from Settings", operationKey: "demo:inventory:paper:opening:v1" });
-  await register(tx, "inventory.paper.balance", "STOCK_BALANCE", balanceId(van.locationId, product.id, "WORKING"), "25 working demo paper rolls", section, "PRIMARY");
-  await register(tx, "inventory.paper.opening", "STOCK_MOVEMENT", movement.id, "Opening-balance movement", section, "PRIMARY");
+  const products = await ensureProducts(tx, section, "DEPENDENCY");
+  const vans = await ensureFleet(tx, section, "DEPENDENCY");
+  await lockLocations(tx, vans.map((van) => van.locationId));
+  const quantities = [25, 18, 32, 12, 16, 24, 20, 14, 8, 11];
+  for (let index = 0; index < 10; index++) {
+    const suffix = String(index + 1).padStart(2, "0");
+    const balanceKey = index === 0 ? "inventory.paper.balance" : `inventory.balance.${suffix}`;
+    const movementKey = index === 0 ? "inventory.paper.opening" : `inventory.opening.${suffix}`;
+    const existing = await findFixture(tx, balanceKey);
+    if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); continue; }
+    const product = products[index];
+    const van = vans[index];
+    const movement = await moveStock(tx, { type: "OPENING_BALANCE", productId: product.id, condition: "WORKING", quantity: quantities[index], to: { locationId: van.locationId }, performedBy: actor, note: "Opening balance recorded from Settings", operationKey: index === 0 ? "demo:inventory:paper:opening:v1" : `settings-seed:inventory:opening:${suffix}` });
+    await register(tx, balanceKey, "STOCK_BALANCE", balanceId(van.locationId, product.id, "WORKING"), `${quantities[index]} working ${product.name.toLowerCase()} at ${van.code}`, section, "PRIMARY");
+    await register(tx, movementKey, "STOCK_MOVEMENT", movement.id, `${van.code} opening-balance movement`, section, "DEPENDENCY");
+  }
 }
 
 async function seedDispatch(tx: Tx, section: DemoSection) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
-  const branch = await ensureBranch(tx, section, "DEPENDENCY", "customer.downtown", "Downtown", "Central");
-  const existing = await findFixture(tx, "dispatch.request");
-  let job;
-  if (existing) {
-    await claim(tx, existing.record.id, section, "PRIMARY");
-    job = await tx.job.findUniqueOrThrow({ where: { id: existing.record.entityId } });
-    const conflict = await tx.job.findUnique({ where: { reference: "REQ-2026-1042" } });
-    if (conflict && conflict.id !== job.id) throw new AppError("CONFLICT", "A non-demo request already uses reference REQ-2026-1042. Nothing was changed.");
-    job = await tx.job.update({ where: { id: job.id }, data: { reference: "REQ-2026-1042", notes: "Deliver thermal paper to the Downtown branch." } });
-  } else {
-    assertUniqueAvailable(await tx.job.findUnique({ where: { reference: "REQ-2026-1042" } }), "request reference REQ-2026-1042");
-    job = await tx.job.create({ data: { reference: "REQ-2026-1042", type: "DELIVERY", branchId: branch.id, requestedOn: new Date("2026-10-18T00:00:00.000Z"), notes: "Deliver thermal paper to the Downtown branch." } });
-    await register(tx, "dispatch.request", "JOB", job.id, "Request REQ-2026-1042", section, "PRIMARY");
-  }
-  const itemFixture = await findFixture(tx, "dispatch.request.paper");
-  if (itemFixture) {
-    await claim(tx, itemFixture.record.id, section, "PRIMARY");
-    await tx.jobItem.update({ where: { id: itemFixture.record.entityId }, data: { productId: product.id, quantity: 4 } });
-  } else {
-    const item = await tx.jobItem.create({ data: { jobId: job.id, productId: product.id, quantity: 4 } });
-    await register(tx, "dispatch.request.paper", "JOB_ITEM", item.id, "Thermal paper request line", section, "PRIMARY");
+  const products = await ensureProducts(tx, section, "DEPENDENCY");
+  const branches = await ensureCustomerBranches(tx, section, "DEPENDENCY");
+  for (let index = 0; index < DISPATCHES.length; index++) {
+    const fixture = DISPATCHES[index];
+    const existing = await findFixture(tx, fixture.jobKey);
+    let job;
+    if (existing) {
+      await claim(tx, existing.record.id, section, "PRIMARY");
+      job = await tx.job.findUniqueOrThrow({ where: { id: existing.record.entityId } });
+    } else {
+      assertUniqueAvailable(await tx.job.findUnique({ where: { reference: fixture.reference } }), `request reference ${fixture.reference}`);
+      const branch = branches.get(fixture.branchKey)!;
+      job = await tx.job.create({ data: { reference: fixture.reference, type: "DELIVERY", branchId: branch.id, requestedOn: new Date(Date.UTC(2026, 9, 18 + index)), notes: fixture.notes } });
+      await register(tx, fixture.jobKey, "JOB", job.id, `Request ${fixture.reference}`, section, "PRIMARY");
+    }
+    const itemFixture = await findFixture(tx, fixture.itemKey);
+    if (itemFixture) await claim(tx, itemFixture.record.id, section, "PRIMARY");
+    else {
+      const item = await tx.jobItem.create({ data: { jobId: job.id, productId: products[fixture.productIndex].id, quantity: fixture.quantity } });
+      await register(tx, fixture.itemKey, "JOB_ITEM", item.id, `${fixture.reference} product line`, section, "PRIMARY");
+    }
   }
 }
 
 async function seedRestocking(tx: Tx, section: DemoSection) {
-  const product = await ensureProduct(tx, section, "DEPENDENCY", "product.paper", PAPER_PRODUCT);
-  const van = await ensureVan(tx, section, "DEPENDENCY");
-  const existing = await findFixture(tx, "restocking.job");
-  if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); return; }
-  const operationalOpen = await tx.restockJob.findFirst({ where: { vanId: van.id, status: "OPEN" } });
-  if (operationalOpen) throw invalidState("The demo van already has an untracked open restock job. Nothing was changed.");
-  const job = await tx.restockJob.create({ data: { vanId: van.id } });
-  const item = await tx.restockItem.create({ data: { restockJobId: job.id, productId: product.id, outstandingQuantity: 10 } });
-  await register(tx, "restocking.job", "RESTOCK_JOB", job.id, "Open demo restock job", section, "PRIMARY");
-  await register(tx, "restocking.item.paper", "RESTOCK_ITEM", item.id, "Demo paper pick-list line", section, "PRIMARY");
+  const products = await ensureProducts(tx, section, "DEPENDENCY");
+  const vans = await ensureFleet(tx, section, "DEPENDENCY");
+  for (let index = 0; index < 10; index++) {
+    const suffix = String(index + 1).padStart(2, "0");
+    const jobKey = index === 0 ? "restocking.job" : `restocking.job.${suffix}`;
+    const itemKey = index === 0 ? "restocking.item.paper" : `restocking.item.${suffix}`;
+    const existing = await findFixture(tx, jobKey);
+    if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); continue; }
+    const operationalOpen = await tx.restockJob.findFirst({ where: { vanId: vans[index].id, status: "OPEN" } });
+    if (operationalOpen) throw invalidState(`Van ${vans[index].code} already has an untracked open restock job. Nothing was changed.`);
+    const job = await tx.restockJob.create({ data: { vanId: vans[index].id } });
+    const item = await tx.restockItem.create({ data: { restockJobId: job.id, productId: products[index].id, outstandingQuantity: 10 + index * 2 } });
+    await register(tx, jobKey, "RESTOCK_JOB", job.id, `Open restock job for ${vans[index].code}`, section, "PRIMARY");
+    await register(tx, itemKey, "RESTOCK_ITEM", item.id, `${products[index].name} restock line`, section, "PRIMARY");
+  }
 }
 
 type ProductCreate = Pick<Prisma.ProductCreateInput, "sku" | "name" | "serialised" | "baseUnit" | "packUnit" | "packSize" | "vanMinimum">;
+type ProductFixture = ProductCreate & { fixtureKey: string };
 async function ensureProduct(tx: Tx, section: DemoSection, kind: DemoClaimKind, key: string, data: ProductCreate) {
-  const fixture = await findFixture(tx, key);
-  if (fixture) {
-    await claim(tx, fixture.record.id, section, kind);
-    const product = await tx.product.findUniqueOrThrow({ where: { id: fixture.record.entityId } });
-    const conflictingSku = await tx.product.findUnique({ where: { sku: data.sku } });
-    if (conflictingSku && conflictingSku.id !== product.id) throw new AppError("CONFLICT", `A non-demo product already uses SKU ${data.sku}. Nothing was changed.`);
-    return tx.product.update({ where: { id: product.id }, data: { sku: data.sku, name: data.name } });
+  const tracked = await tx.demoRecord.findUnique({ where: { fixtureKey: key } });
+  if (tracked) {
+    const productExists = await entityExists(tx, tracked.entityType, tracked.entityId);
+    if (!productExists) {
+      if (tracked.entityType !== "PRODUCT") throw invalidState(`Provenance for ${tracked.label} points to a missing non-product record.`);
+      assertUniqueAvailable(await tx.product.findUnique({ where: { sku: data.sku } }), `product SKU ${data.sku}`);
+      const product = await tx.product.create({ data: { sku: data.sku, name: data.name, serialised: data.serialised, baseUnit: data.baseUnit, packUnit: data.packUnit, packSize: data.packSize, vanMinimum: data.vanMinimum } });
+      await tx.demoRecord.update({ where: { id: tracked.id }, data: { entityId: product.id, label: data.name } });
+      await claim(tx, tracked.id, section, kind);
+      return product;
+    }
+    if (tracked.entityType !== "PRODUCT") throw invalidState(`Fixture ${key} is tracked as ${tracked.entityType}, not a product.`);
+    await claim(tx, tracked.id, section, kind);
+    return tx.product.findUniqueOrThrow({ where: { id: tracked.entityId } });
   }
   assertUniqueAvailable(await tx.product.findUnique({ where: { sku: data.sku } }), `product SKU ${data.sku}`);
-  const product = await tx.product.create({ data });
+  const product = await tx.product.create({ data: { sku: data.sku, name: data.name, serialised: data.serialised, baseUnit: data.baseUnit, packUnit: data.packUnit, packSize: data.packSize, vanMinimum: data.vanMinimum } });
   await register(tx, key, "PRODUCT", product.id, data.name, section, kind);
   return product;
 }
 
-async function ensureBranch(tx: Tx, section: DemoSection, kind: DemoClaimKind, key: string, name: string, zone: string) {
-  let customerFixture = await findFixture(tx, "customer.main");
-  let customer;
-  if (customerFixture) {
-    customer = await tx.customer.findUniqueOrThrow({ where: { id: customerFixture.record.entityId } });
-    const conflict = await tx.customer.findUnique({ where: { name: "Juniper Table Group" } });
-    if (conflict && conflict.id !== customer.id) throw new AppError("CONFLICT", "A non-demo customer already uses the name Juniper Table Group. Nothing was changed.");
-    customer = await tx.customer.update({ where: { id: customer.id }, data: { name: "Juniper Table Group" } });
-  }
-  else {
-    assertUniqueAvailable(await tx.customer.findUnique({ where: { name: "Juniper Table Group" } }), "customer name Juniper Table Group");
-    customer = await tx.customer.create({ data: { name: "Juniper Table Group" } });
-    await register(tx, "customer.main", "CUSTOMER", customer.id, "Juniper Table Group", section, kind);
-    customerFixture = await findFixture(tx, "customer.main");
-  }
-  await claim(tx, customerFixture!.record.id, section, kind);
-  const fixture = await findFixture(tx, key);
-  if (fixture) {
-    await claim(tx, fixture.record.id, section, kind);
-    const branch = await tx.branch.findUniqueOrThrow({ where: { id: fixture.record.entityId } });
-    const conflict = await tx.branch.findUnique({ where: { customerId_name: { customerId: customer.id, name } } });
-    if (conflict && conflict.id !== branch.id) throw new AppError("CONFLICT", `A non-demo branch already uses ${name}. Nothing was changed.`);
-    return tx.branch.update({ where: { id: branch.id }, data: { customerId: customer.id, name, zone } });
-  }
-  assertUniqueAvailable(await tx.branch.findUnique({ where: { customerId_name: { customerId: customer.id, name } } }), `branch ${name}`);
-  const branch = await tx.branch.create({ data: { customerId: customer.id, name, zone } });
-  await register(tx, key, "BRANCH", branch.id, `${name} branch`, section, kind);
-  return branch;
+async function ensureProducts(tx: Tx, section: DemoSection, kind: DemoClaimKind) {
+  return Promise.all(PRODUCTS.map((item) => ensureProduct(tx, section, kind, item.fixtureKey, item)));
 }
 
-async function ensureVan(tx: Tx, section: DemoSection, kind: DemoClaimKind) {
-  const existing = await findFixture(tx, "fleet.van");
+async function ensureCustomerBranches(tx: Tx, section: DemoSection, kind: DemoClaimKind) {
+  const branches = new Map<string, Awaited<ReturnType<typeof tx.branch.findUniqueOrThrow>>>();
+  for (const account of CUSTOMERS) {
+    const customerFixture = await findFixture(tx, account.key);
+    let customer;
+    if (customerFixture) {
+      await claim(tx, customerFixture.record.id, section, kind);
+      customer = await tx.customer.findUniqueOrThrow({ where: { id: customerFixture.record.entityId } });
+    } else {
+      assertUniqueAvailable(await tx.customer.findUnique({ where: { name: account.name } }), `customer name ${account.name}`);
+      customer = await tx.customer.create({ data: { name: account.name } });
+      await register(tx, account.key, "CUSTOMER", customer.id, account.name, section, kind);
+    }
+    for (const branchData of account.branches) {
+      const fixture = await findFixture(tx, branchData.key);
+      let branch;
+      if (fixture) {
+        await claim(tx, fixture.record.id, section, kind);
+        branch = await tx.branch.findUniqueOrThrow({ where: { id: fixture.record.entityId } });
+        if (branch.customerId !== customer.id) throw invalidState(`${branchData.name} branch is tracked under a different customer. It will not be reassigned automatically.`);
+      } else {
+        assertUniqueAvailable(await tx.branch.findUnique({ where: { customerId_name: { customerId: customer.id, name: branchData.name } } }), `branch ${branchData.name}`);
+        branch = await tx.branch.create({ data: { customerId: customer.id, name: branchData.name, zone: branchData.zone } });
+        await register(tx, branchData.key, "BRANCH", branch.id, `${branchData.name} branch`, section, kind);
+      }
+      branches.set(branchData.key, branch);
+    }
+  }
+  return branches;
+}
+
+async function ensureFleet(tx: Tx, section: DemoSection, kind: DemoClaimKind) {
+  return Promise.all(FLEET.map((_, index) => ensureVan(tx, section, kind, index)));
+}
+
+async function ensureVan(tx: Tx, section: DemoSection, kind: DemoClaimKind, index: number) {
+  const fixtureData = FLEET[index];
+  const existing = await findFixture(tx, fixtureData.vanKey);
   if (existing) {
     await claim(tx, existing.record.id, section, kind);
     const van = await tx.van.findUniqueOrThrow({ where: { id: existing.record.entityId } });
-    const technicianFixture = await findFixture(tx, "fleet.technician");
-    const locationFixture = await findFixture(tx, "fleet.location");
-    if (technicianFixture) {
-      await claim(tx, technicianFixture.record.id, section, kind);
-      const technician = await tx.technician.findUniqueOrThrow({ where: { id: technicianFixture.record.entityId } });
-      const conflict = await tx.technician.findUnique({ where: { name: "Dana Haddad" } });
-      if (conflict && conflict.id !== technician.id) throw new AppError("CONFLICT", "A non-demo technician already uses the name Dana Haddad. Nothing was changed.");
-      await tx.technician.update({ where: { id: technician.id }, data: { name: "Dana Haddad" } });
-    }
-    if (locationFixture) {
-      await claim(tx, locationFixture.record.id, section, kind);
-      const location = await tx.location.findUniqueOrThrow({ where: { id: locationFixture.record.entityId } });
-      const conflict = await tx.location.findUnique({ where: { name: "Van V-12" } });
-      if (conflict && conflict.id !== location.id) throw new AppError("CONFLICT", "A non-demo location already uses the name Van V-12. Nothing was changed.");
-      await tx.location.update({ where: { id: location.id }, data: { name: "Van V-12" } });
-    }
-    const conflict = await tx.van.findUnique({ where: { code: "V-12" } });
-    if (conflict && conflict.id !== van.id) throw new AppError("CONFLICT", "A non-demo van already uses code V-12. Nothing was changed.");
-    return tx.van.update({ where: { id: van.id }, data: { code: "V-12", plate: "38-24716" } });
+    const technicianFixture = await findFixture(tx, fixtureData.technicianKey);
+    const locationFixture = await findFixture(tx, fixtureData.locationKey);
+    if (!technicianFixture || !locationFixture) throw invalidState(`Van ${fixtureData.code} is missing tracked technician or location provenance. It will not be reassigned automatically.`);
+    await claim(tx, technicianFixture.record.id, section, kind);
+    await claim(tx, locationFixture.record.id, section, kind);
+    return van;
   }
-  assertUniqueAvailable(await tx.van.findUnique({ where: { code: "V-12" } }), "van code V-12");
-  assertUniqueAvailable(await tx.technician.findUnique({ where: { name: "Dana Haddad" } }), "technician name Dana Haddad");
-  assertUniqueAvailable(await tx.location.findUnique({ where: { name: "Van V-12" } }), "location name Van V-12");
-  const technician = await tx.technician.create({ data: { name: "Dana Haddad" } });
-  const location = await tx.location.create({ data: { kind: "VAN", name: "Van V-12" } });
-  const van = await tx.van.create({ data: { code: "V-12", plate: "38-24716", zone: "Central", currentTechnicianId: technician.id, locationId: location.id } });
-  await register(tx, "fleet.technician", "TECHNICIAN", technician.id, "Demo technician Dana", section, kind);
-  await register(tx, "fleet.location", "LOCATION", location.id, "Demo van stock location", section, kind);
-  await register(tx, "fleet.van", "VAN", van.id, "Demo van DEMO-V1", section, kind);
+  assertUniqueAvailable(await tx.van.findUnique({ where: { code: fixtureData.code } }), `van code ${fixtureData.code}`);
+  assertUniqueAvailable(await tx.technician.findUnique({ where: { name: fixtureData.technician } }), `technician name ${fixtureData.technician}`);
+  assertUniqueAvailable(await tx.location.findUnique({ where: { name: `Van ${fixtureData.code}` } }), `location name Van ${fixtureData.code}`);
+  const technician = await tx.technician.create({ data: { name: fixtureData.technician } });
+  const location = await tx.location.create({ data: { kind: "VAN", name: `Van ${fixtureData.code}` } });
+  const van = await tx.van.create({ data: { code: fixtureData.code, plate: fixtureData.plate, zone: fixtureData.zone, currentTechnicianId: technician.id, locationId: location.id } });
+  await register(tx, fixtureData.technicianKey, "TECHNICIAN", technician.id, `Technician ${fixtureData.technician}`, section, kind);
+  await register(tx, fixtureData.locationKey, "LOCATION", location.id, `${fixtureData.code} stock location`, section, kind);
+  await register(tx, fixtureData.vanKey, "VAN", van.id, `Van ${fixtureData.code}`, section, kind);
   return van;
 }
 
