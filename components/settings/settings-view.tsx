@@ -23,6 +23,7 @@ import { DatabaseRegular, DeleteRegular } from "@fluentui/react-icons";
 import { ApiRequestError } from "@/lib/api/client";
 import { demoDataApi } from "@/lib/api/demo-data";
 import type { DemoDataOverview, DemoSection, DemoSectionPreview } from "@/lib/contracts/demo-data";
+import { ClearAllData } from "./clear-all-data";
 
 const useStyles = makeStyles({
   page: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXL },
@@ -82,6 +83,11 @@ export function SettingsView() {
           {overview.sections.map((section) => <SectionCard key={section.section} section={section} pending={pending} onSeed={() => void mutate(section.section, "seed")} onClear={() => setConfirm(section)} />)}
         </div>
       )}
+
+      <ClearAllData onCleared={(message) => {
+        setOverview({ sections: overview?.sections.map((section) => ({ ...section, seeded: [], clearable: [], preservedShared: [], blockers: [] })) ?? [] });
+        setNotice(message);
+      }} />
 
       <ClearDialog section={confirm} pending={pending?.action === "clear"} onClose={() => !pending && setConfirm(null)} onConfirm={() => confirm && void mutate(confirm.section, "clear")} />
     </div>
