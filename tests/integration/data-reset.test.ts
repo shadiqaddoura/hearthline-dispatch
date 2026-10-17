@@ -13,7 +13,7 @@ describe("Settings clear-all data", () => {
     const user = await prisma.user.create({ data: { email: "keep@example.test", name: "Keep Me", role: "ADMIN", passwordHash: "preserved-hash" } });
     await prisma.session.create({ data: { tokenHash: "preserved-session", userId: user.id, expiresAt: new Date(Date.now() + 60_000) } });
     await prisma.loginThrottle.create({ data: { key: "preserved-throttle", attempts: 2, expiresAt: new Date(Date.now() + 60_000) } });
-    for (const section of ["PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING", "IMPORTS"] as const) await seedDemoSection(section, actor);
+    for (const section of ["PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING"] as const) await seedDemoSection(section, actor);
     const preview = await dataResetPreview();
     expect(preview.total).toBeGreaterThan(0);
 

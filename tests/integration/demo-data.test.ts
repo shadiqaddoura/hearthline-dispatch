@@ -11,7 +11,7 @@ beforeEach(resetDatabase);
 
 describe("Settings demo data", () => {
   it("seeds each section idempotently without duplicate records", async () => {
-    for (const section of ["PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING", "IMPORTS"] as const) {
+    for (const section of ["PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING"] as const) {
       await seedDemoSection(section, actor);
       const firstRecords = await prisma.demoRecord.count();
       const firstClaims = await prisma.demoRecordClaim.count();
@@ -21,6 +21,9 @@ describe("Settings demo data", () => {
     }
     expect(await prisma.stockMovement.count({ where: { operationKey: "demo:inventory:paper:opening:v1" } })).toBe(1);
     expect(await prisma.job.count({ where: { reference: "DEMO-REQ-001" } })).toBe(1);
+    expect((await demoDataOverview()).sections.map((section) => section.section)).toEqual([
+      "PRODUCTS", "CUSTOMERS", "FLEET", "INVENTORY", "DISPATCH", "RESTOCKING",
+    ]);
   });
 
   it("tracks dependencies by section and preserves a shared product during selective clear", async () => {
@@ -39,11 +42,13 @@ describe("Settings demo data", () => {
 
   it("clears only provenance-tracked products and preserves unrelated real records", async () => {
     const real = await prisma.product.create({ data: { sku: "REAL-KEEP", name: "Real product", serialised: false } });
+    const imported = await prisma.importBatch.create({ data: { fileName: "existing-import.xlsx", summary: { rows: 12 } } });
     await seedDemoSection("PRODUCTS", actor);
 
     await clearDemoSection("PRODUCTS");
 
     expect(await prisma.product.findUnique({ where: { id: real.id } })).toMatchObject({ name: "Real product" });
+    expect(await prisma.importBatch.findUnique({ where: { id: imported.id } })).toMatchObject({ fileName: "existing-import.xlsx" });
     expect(await prisma.product.count({ where: { sku: { startsWith: "DEMO-" } } })).toBe(0);
     expect(await prisma.demoRecord.count()).toBe(0);
   });

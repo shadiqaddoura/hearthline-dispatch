@@ -1,6 +1,6 @@
 import "server-only";
-import type { DemoClaimKind, DemoEntityType, DemoSection, Prisma } from "@/generated/prisma/client";
-import type { DemoCategoryCount, DemoDataOverview, DemoSectionPreview } from "@/lib/contracts/demo-data";
+import type { DemoClaimKind, DemoEntityType, Prisma } from "@/generated/prisma/client";
+import type { DemoCategoryCount, DemoDataOverview, DemoSection, DemoSectionPreview } from "@/lib/contracts/demo-data";
 import { prisma } from "@/server/db/prisma";
 import { lockLocations, runInTransaction, type Tx } from "@/server/db/transaction";
 import { AppError, invalidState } from "@/server/http/errors";
@@ -43,15 +43,9 @@ const DESCRIPTORS: Record<DemoSection, { title: string; description: string; rec
     records: ["One open restock job", "Demo paper pick-list line"],
     dependencies: ["Demo paper product", "Demo van and its location"],
   },
-  IMPORTS: {
-    title: "Imports",
-    description: "Creates an isolated demo import batch, source row, and informational issue; it does not import operational records.",
-    records: ["demo-stock-book.xlsx batch", "One preserved source row", "One informational issue"],
-    dependencies: [],
-  },
 };
 
-const ENTITY_LABEL: Record<DemoEntityType, string> = {
+const ENTITY_LABEL: Partial<Record<DemoEntityType, string>> = {
   PRODUCT: "Products",
   CUSTOMER: "Customers",
   BRANCH: "Branches",
@@ -64,9 +58,6 @@ const ENTITY_LABEL: Record<DemoEntityType, string> = {
   JOB_ITEM: "Job product lines",
   RESTOCK_JOB: "Restock jobs",
   RESTOCK_ITEM: "Restock lines",
-  IMPORT_BATCH: "Import batches",
-  IMPORT_SOURCE_ROW: "Import source rows",
-  IMPORT_ISSUE: "Import issues",
 };
 
 export async function demoDataOverview(): Promise<DemoDataOverview> {
@@ -84,7 +75,6 @@ export async function seedDemoSection(section: DemoSection, actor: string) {
         case "INVENTORY": await seedInventory(tx, section, actor); break;
         case "DISPATCH": await seedDispatch(tx, section); break;
         case "RESTOCKING": await seedRestocking(tx, section); break;
-        case "IMPORTS": await seedImports(tx, section); break;
       }
       return countsForSection(tx, section);
     });
@@ -197,17 +187,6 @@ async function seedRestocking(tx: Tx, section: DemoSection) {
   await register(tx, "restocking.item.paper", "RESTOCK_ITEM", item.id, "Demo paper pick-list line", section, "PRIMARY");
 }
 
-async function seedImports(tx: Tx, section: DemoSection) {
-  const existing = await findFixture(tx, "imports.batch");
-  if (existing) { await claim(tx, existing.record.id, section, "PRIMARY"); return; }
-  const batch = await tx.importBatch.create({ data: { fileName: "demo-stock-book.xlsx", summary: { demo: true, rows: 1 } } });
-  const row = await tx.importSourceRow.create({ data: { batchId: batch.id, sheet: "Demo Preview", rowNumber: 2, raw: { note: "Isolated demo import row" } } });
-  const issue = await tx.importIssue.create({ data: { batchId: batch.id, sourceRowId: row.id, severity: "INFO", code: "DEMO_PREVIEW", message: "Demo import workflow preview only" } });
-  await register(tx, "imports.batch", "IMPORT_BATCH", batch.id, "demo-stock-book.xlsx", section, "PRIMARY");
-  await register(tx, "imports.row", "IMPORT_SOURCE_ROW", row.id, "Demo Preview row 2", section, "PRIMARY");
-  await register(tx, "imports.issue", "IMPORT_ISSUE", issue.id, "Demo informational issue", section, "PRIMARY");
-}
-
 type ProductCreate = Pick<Prisma.ProductCreateInput, "sku" | "name" | "serialised" | "baseUnit" | "packUnit" | "packSize" | "vanMinimum">;
 async function ensureProduct(tx: Tx, section: DemoSection, kind: DemoClaimKind, key: string, data: ProductCreate) {
   const fixture = await findFixture(tx, key);
@@ -275,7 +254,7 @@ function assertUniqueAvailable(value: unknown, label: string): asserts value is 
 
 async function entityExists(tx: Tx, type: DemoEntityType, id: string) {
   if (type === "STOCK_BALANCE") { const [locationId, productId, condition] = id.split("|"); return Boolean(await tx.stockBalance.findUnique({ where: { locationId_productId_condition: { locationId, productId, condition: condition as "WORKING" | "BROKEN" } } })); }
-  const delegates: Partial<Record<DemoEntityType, { findUnique(args: unknown): Promise<unknown> }>> = { PRODUCT: tx.product as never, CUSTOMER: tx.customer as never, BRANCH: tx.branch as never, TECHNICIAN: tx.technician as never, LOCATION: tx.location as never, VAN: tx.van as never, STOCK_MOVEMENT: tx.stockMovement as never, JOB: tx.job as never, JOB_ITEM: tx.jobItem as never, RESTOCK_JOB: tx.restockJob as never, RESTOCK_ITEM: tx.restockItem as never, IMPORT_BATCH: tx.importBatch as never, IMPORT_SOURCE_ROW: tx.importSourceRow as never, IMPORT_ISSUE: tx.importIssue as never };
+  const delegates: Partial<Record<DemoEntityType, { findUnique(args: unknown): Promise<unknown> }>> = { PRODUCT: tx.product as never, CUSTOMER: tx.customer as never, BRANCH: tx.branch as never, TECHNICIAN: tx.technician as never, LOCATION: tx.location as never, VAN: tx.van as never, STOCK_MOVEMENT: tx.stockMovement as never, JOB: tx.job as never, JOB_ITEM: tx.jobItem as never, RESTOCK_JOB: tx.restockJob as never, RESTOCK_ITEM: tx.restockItem as never };
   const delegate = delegates[type];
   if (!delegate) return false;
   return Boolean(await delegate.findUnique({ where: { id }, select: { id: true } }));
@@ -284,7 +263,10 @@ async function entityExists(tx: Tx, type: DemoEntityType, id: string) {
 async function countsForSection(tx: Tx, section: DemoSection) { return countRecords(await tx.demoRecord.findMany({ where: { claims: { some: { section } } } })); }
 function countRecords(records: { entityType: DemoEntityType }[]): DemoCategoryCount[] {
   const totals = new Map<string, number>();
-  for (const record of records) totals.set(ENTITY_LABEL[record.entityType], (totals.get(ENTITY_LABEL[record.entityType]) ?? 0) + 1);
+  for (const record of records) {
+    const label = ENTITY_LABEL[record.entityType];
+    if (label) totals.set(label, (totals.get(label) ?? 0) + 1);
+  }
   return [...totals].map(([category, count]) => ({ category, count })).sort((a, b) => a.category.localeCompare(b.category));
 }
 
@@ -345,23 +327,19 @@ async function clearBlockers(tx: Tx, records: { entityType: DemoEntityType; enti
       const other = await Promise.all([tx.reservation.count({ where: { productId: record.entityId } }), tx.equipmentUnit.count({ where: { productId: record.entityId } }), tx.jobCompletionLine.count({ where: { productId: record.entityId } }), tx.restockReturn.count({ where: { productId: record.entityId } }), tx.stockCorrection.count({ where: { productId: record.entityId } })]);
       if (items.some((row) => !has("JOB_ITEM", row.id)) || movements.some((row) => !has("STOCK_MOVEMENT", row.id)) || balances.some((row) => !has("STOCK_BALANCE", balanceId(row.locationId, row.productId, row.condition))) || restockItems.some((row) => !has("RESTOCK_ITEM", row.id)) || other.some(Boolean)) blockers.push(`${record.label} is linked to non-demo stock or operational history.`);
     }
-    if (record.entityType === "IMPORT_BATCH") {
-      const rows = await tx.importSourceRow.findMany({ where: { batchId: record.entityId }, include: { job: true, movements: true } });
-      if (rows.some((row) => !has("IMPORT_SOURCE_ROW", row.id) || row.job || row.movements.length)) blockers.push(`${record.label} is linked to imported operational records.`);
-    }
   }
   return [...new Set(blockers)];
 }
 
 async function deleteEntities(tx: Tx, records: { entityType: DemoEntityType; entityId: string }[]) {
   const ids = (type: DemoEntityType) => records.filter((record) => record.entityType === type).map((record) => record.entityId);
-  for (const type of ["IMPORT_ISSUE", "IMPORT_SOURCE_ROW", "JOB_ITEM", "RESTOCK_ITEM", "STOCK_MOVEMENT"] as DemoEntityType[]) await deleteSimple(tx, type, ids(type));
+  for (const type of ["JOB_ITEM", "RESTOCK_ITEM", "STOCK_MOVEMENT"] as DemoEntityType[]) await deleteSimple(tx, type, ids(type));
   for (const id of ids("STOCK_BALANCE")) { const [locationId, productId, condition] = id.split("|"); await tx.stockBalance.delete({ where: { locationId_productId_condition: { locationId, productId, condition: condition as "WORKING" | "BROKEN" } } }); }
-  for (const type of ["JOB", "RESTOCK_JOB", "VAN", "BRANCH", "IMPORT_BATCH", "LOCATION", "TECHNICIAN", "CUSTOMER", "PRODUCT"] as DemoEntityType[]) await deleteSimple(tx, type, ids(type));
+  for (const type of ["JOB", "RESTOCK_JOB", "VAN", "BRANCH", "LOCATION", "TECHNICIAN", "CUSTOMER", "PRODUCT"] as DemoEntityType[]) await deleteSimple(tx, type, ids(type));
 }
 async function deleteSimple(tx: Tx, type: DemoEntityType, ids: string[]) {
   if (!ids.length) return;
-  const delegates: Partial<Record<DemoEntityType, { deleteMany(args: unknown): Promise<unknown> }>> = { PRODUCT: tx.product as never, CUSTOMER: tx.customer as never, BRANCH: tx.branch as never, TECHNICIAN: tx.technician as never, LOCATION: tx.location as never, VAN: tx.van as never, STOCK_MOVEMENT: tx.stockMovement as never, JOB: tx.job as never, JOB_ITEM: tx.jobItem as never, RESTOCK_JOB: tx.restockJob as never, RESTOCK_ITEM: tx.restockItem as never, IMPORT_BATCH: tx.importBatch as never, IMPORT_SOURCE_ROW: tx.importSourceRow as never, IMPORT_ISSUE: tx.importIssue as never };
+  const delegates: Partial<Record<DemoEntityType, { deleteMany(args: unknown): Promise<unknown> }>> = { PRODUCT: tx.product as never, CUSTOMER: tx.customer as never, BRANCH: tx.branch as never, TECHNICIAN: tx.technician as never, LOCATION: tx.location as never, VAN: tx.van as never, STOCK_MOVEMENT: tx.stockMovement as never, JOB: tx.job as never, JOB_ITEM: tx.jobItem as never, RESTOCK_JOB: tx.restockJob as never, RESTOCK_ITEM: tx.restockItem as never };
   await delegates[type]?.deleteMany({ where: { id: { in: ids } } });
 }
 function balanceId(locationId: string, productId: string, condition: string) { return `${locationId}|${productId}|${condition}`; }

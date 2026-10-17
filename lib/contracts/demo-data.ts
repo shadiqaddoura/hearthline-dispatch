@@ -7,7 +7,6 @@ export const demoSectionSchema = z.enum([
   "INVENTORY",
   "DISPATCH",
   "RESTOCKING",
-  "IMPORTS",
 ]);
 export type DemoSection = z.infer<typeof demoSectionSchema>;
 
