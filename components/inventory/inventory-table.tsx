@@ -18,7 +18,15 @@ const useStyles = makeStyles({
   brokenColumn: { width: "9%" },
   verificationColumn: { width: "21%" },
   locationRow: { backgroundColor: tokens.colorNeutralBackground2 },
-  locationHeading: { paddingBlock: tokens.spacingVerticalS, fontWeight: tokens.fontWeightSemibold },
+  locationHeading: { paddingBlock: tokens.spacingVerticalS },
+  locationHeadingContent: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalS },
+  locationName: { fontWeight: tokens.fontWeightSemibold, color: tokens.colorNeutralForeground1 },
+  locationType: {
+    display: "inline-flex", alignItems: "center", borderRadius: tokens.borderRadiusMedium,
+    paddingInline: tokens.spacingHorizontalS, paddingBlock: tokens.spacingVerticalXXS,
+    backgroundColor: tokens.colorNeutralBackground3, color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200, fontWeight: tokens.fontWeightRegular,
+  },
   headerCell: {
     paddingInline: tokens.spacingHorizontalS,
     verticalAlign: "middle",
@@ -114,7 +122,10 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
   const tableRows = sortedGroups.flatMap((group) => [
     <TableRow key={`location:${group.rows[0].locationId}`} className={mergeClasses(styles.locationRow, "inventory-location-row")}>
       <TableHeaderCell colSpan={7} className={styles.locationHeading}>
-        {group.kind === "VAN" ? `Van ${group.locationName}` : group.locationName}
+        <div className={styles.locationHeadingContent}>
+          <span className={styles.locationName}>{formatLocationName(group.kind, group.locationName)}</span>
+          <span className={styles.locationType}>{group.kind === "VAN" ? "Van" : "Warehouse"}</span>
+        </div>
       </TableHeaderCell>
     </TableRow>,
     ...group.rows.map((row) => <TableRow key={`${row.locationId}:${row.line.productId}`} className="inventory-product-row">
@@ -148,6 +159,11 @@ export function InventoryTable({ rows, onSelect, onSort, sort, emptyState, onCle
       </TableRow></TableHeader>
       <TableBody>{tableRows}</TableBody>
     </Table>
+}
+
+function formatLocationName(kind: InventoryRow["kind"], name: string) {
+  if (kind !== "VAN") return name;
+  return `Van ${name.replace(/^Van\s+/i, "")}`;
 }
 
 function InventoryEmpty({ state, onClearFilters }: { state: InventoryEmptyState; onClearFilters?: () => void }) {
