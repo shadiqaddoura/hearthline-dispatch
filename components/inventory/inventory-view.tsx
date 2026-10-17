@@ -9,6 +9,7 @@ import { InventoryTable, type InventoryEmptyState, type InventoryRow } from "./i
 import { InventoryDetails, type InventoryOperation } from "./inventory-details";
 import { InventoryOperationSheet } from "./inventory-operation-sheet";
 import { WarehouseForm } from "./warehouse-form";
+import { InventoryLocationDelete } from "./inventory-location-delete";
 import { useInventory } from "./use-inventory";
 
 const stylesHook = makeStyles({
@@ -16,7 +17,9 @@ const stylesHook = makeStyles({
   description: { color: tokens.colorNeutralForeground2, maxWidth: "760px" },
   toolbar: { display: "flex", flexWrap: "wrap", alignItems: "end", gap: tokens.spacingHorizontalM },
   surface: { backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusLarge, boxShadow: tokens.shadow2, overflow: "hidden" },
-  locationActions: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: tokens.spacingHorizontalM },
+  locationsContent: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  locationNameCell: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: tokens.spacingHorizontalS },
+  createWarehouse: { alignSelf: "flex-start" },
 });
 
 type SortKey = "product" | "working" | "available";
@@ -35,6 +38,7 @@ export function InventoryView() {
   const [operation, setOperation] = useState<InventoryOperation | null>(null);
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [productsError, setProductsError] = useState("");
+  const [locationNotice, setLocationNotice] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const surfaceRef = useRef<HTMLElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
@@ -77,19 +81,21 @@ export function InventoryView() {
     <Text as="p" className={styles.description}>Physical stock by warehouse, van and product. Available quantities come from the stock ledger and exclude reservations, broken units and unverified serialised equipment.</Text>
     <section className={styles.surface} aria-label="Locations" style={{ padding: 20 }}>
       <Text as="h2" weight="semibold">Inventory locations</Text>
-      <div style={{ overflowX: "auto" }}>
-        <Table aria-label="Inventory locations">
-          <TableHeader><TableRow><TableHeaderCell>Location</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Stock tracking</TableHeaderCell><TableHeaderCell>Actions</TableHeaderCell></TableRow></TableHeader>
-          <TableBody>{(inventory.locations ?? []).map((location) => <TableRow key={location.locationId}>
-            <TableCell>{location.locationName}</TableCell>
-            <TableCell>{location.kind === "HUB" ? "Warehouse" : "Van"}</TableCell>
-            <TableCell>{location.kind === "HUB" && !location.inventoryTracked ? "Awaiting physical opening count" : "Stock tracked"}</TableCell>
-            <TableCell><div className={styles.locationActions}><Button size="small" onClick={() => setLocationFilter(location.locationId)}>View stock</Button>{location.vanId && <a href="/fleet">Manage van in Fleet</a>}</div></TableCell>
-          </TableRow>)}</TableBody>
-        </Table>
+      <div className={styles.locationsContent}>
+        {locationNotice && <MessageBar intent="success"><MessageBarBody>{locationNotice}</MessageBarBody></MessageBar>}
+        <div style={{ overflowX: "auto" }}>
+          <Table aria-label="Inventory locations">
+            <TableHeader><TableRow><TableHeaderCell>Location</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Stock tracking</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{(inventory.locations ?? []).map((location) => <TableRow key={location.locationId}>
+              <TableCell><div className={styles.locationNameCell}><span>{location.locationName}</span><InventoryLocationDelete location={location} onRefresh={inventory.refresh} onDeleted={(name) => { setLocationNotice(`${name} deleted.`); inventory.refresh(); window.dispatchEvent(new Event("inventory-changed")); window.dispatchEvent(new Event("fleet-changed")); }} /></div></TableCell>
+              <TableCell>{location.kind === "HUB" ? "Warehouse" : "Van"}</TableCell>
+              <TableCell>{location.kind === "HUB" && !location.inventoryTracked ? "Awaiting physical opening count" : "Stock tracked"}</TableCell>
+            </TableRow>)}</TableBody>
+          </Table>
+        </div>
+        <Button {...restore} className={styles.createWarehouse} appearance="primary" disabled={inventory.loading || Boolean(inventory.problem) || Boolean(warehouse?.inventoryTracked)} onClick={() => setWarehouseOpen(true)}>Create warehouse</Button>
+        {warehouse?.inventoryTracked && <MessageBar intent="success"><MessageBarBody>Warehouse configured. Use its stock details for corrections, transfers and serial verification.</MessageBarBody></MessageBar>}
       </div>
-      <Button {...restore} disabled={inventory.loading || Boolean(inventory.problem) || Boolean(warehouse?.inventoryTracked)} onClick={() => setWarehouseOpen(true)}>Create warehouse</Button>
-      {warehouse?.inventoryTracked && <Text> Warehouse configured. Use its stock details for corrections, transfers and serial verification.</Text>}
     </section>
     {inventory.problem && <MessageBar intent="error" layout="multiline"><MessageBarBody><MessageBarTitle>Inventory could not be loaded</MessageBarTitle>{inventory.problem}</MessageBarBody><MessageBarActions><Button onClick={inventory.refresh}>Retry</Button></MessageBarActions></MessageBar>}
     {productsError && <MessageBar intent="error"><MessageBarBody>{productsError} <Button onClick={() => inventory.refresh()}>Retry</Button></MessageBarBody></MessageBar>}

@@ -9,10 +9,11 @@ import type {
   TransferStockRequest,
   VerifyUnitRequest,
 } from "@/lib/contracts/inventory";
-import { getJson, sendJson } from "./client";
+import { deleteJson, getJson, sendJson } from "./client";
 
 export const inventoryApi = {
   createWarehouse: (input: CreateWarehouseRequest) => sendJson<{ locationId: string }>("POST", "/api/inventory/warehouses", input),
+  deleteWarehouse: (locationId: string) => deleteJson<{ locationId: string }>(`/api/inventory/locations/${encodeURIComponent(locationId)}`),
   list: (signal?: AbortSignal) => getJson<InventoryLocationDto[]>("/api/inventory", { signal }),
   detail: (locationId: string, productId: string, signal?: AbortSignal) =>
     getJson<InventoryDetailDto>(`/api/inventory/${encodeURIComponent(locationId)}/${encodeURIComponent(productId)}`, { signal }),

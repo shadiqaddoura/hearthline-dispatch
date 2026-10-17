@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/prisma";
-import { createWarehouse } from "@/server/modules/inventory/warehouse.service";
+import { createWarehouse, deleteWarehouse } from "@/server/modules/inventory/warehouse.service";
 import { correctStock, getInventoryDetail, listInventoryLocations, receiveStock, transferStock } from "@/server/modules/inventory/inventory.service";
 import { confirmRestockCollection, listRestockJobs, recalculateAllRestockJobs } from "@/server/modules/restocking/restock.service";
 import { getHubLocation } from "@/server/modules/fleet/fleet.repository";
@@ -107,5 +107,27 @@ describe("warehouse setup", () => {
     await expect(receiveStock({ ...input, operationKey: crypto.randomUUID() })).rejects.toMatchObject({ code: "NEGATIVE_STOCK" });
     await correctStock({ locationId: w.hub.id, productId: w.cable.id, condition: "WORKING", countedQuantity: 4, correctedBy: "Nadia", reason: "Recounted shelf" });
     expect(await balance(w.hub.id, w.cable.id)).toBe(4);
+  });
+});
+
+describe("warehouse deletion safety", () => {
+  it("deletes an unused warehouse location", async () => {
+    await expect(deleteWarehouse(w.hub.id)).resolves.toEqual({ locationId: w.hub.id });
+    expect(await prisma.location.findUnique({ where: { id: w.hub.id } })).toBeNull();
+  });
+
+  it("retains a warehouse with zero stock and dependent ledger history", async () => {
+    await setup([{ productId: w.cable.id, quantity: 4, condition: "WORKING" }]);
+    await correctStock({ locationId: w.hub.id, productId: w.cable.id, condition: "WORKING", countedQuantity: 0, correctedBy: "Nadia", reason: "Shelf is empty" });
+    const movementCount = await prisma.stockMovement.count({ where: { OR: [{ fromLocationId: w.hub.id }, { toLocationId: w.hub.id }] } });
+    expect(await balance(w.hub.id, w.cable.id)).toBe(0);
+
+    await expect(deleteWarehouse(w.hub.id)).rejects.toMatchObject({
+      code: "INVALID_STATE",
+      message: expect.stringContaining("stock movements"),
+    });
+    expect(await prisma.location.findUnique({ where: { id: w.hub.id } })).not.toBeNull();
+    expect(await prisma.stockMovement.count({ where: { OR: [{ fromLocationId: w.hub.id }, { toLocationId: w.hub.id }] } })).toBe(movementCount);
+    expect(await balance(w.hub.id, w.cable.id)).toBe(0);
   });
 });
