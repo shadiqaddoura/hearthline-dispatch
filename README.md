@@ -17,6 +17,8 @@ npm run dev                      # app at http://localhost:3000, API at /api
 
 Open http://localhost:3000. It redirects to the sign-in preview; **Continue to demo** opens the Products page.
 
+After pulling updates, stop the development server and run `npx prisma migrate deploy` followed by `npx prisma generate`, then restart with `npm run dev`. These commands use `DATABASE_URL` from the environment (or `.env`); ensure it targets the intended development database. The Inventory receipt migration adds nullable `stock_movements.operationKey` and its unique index: historical movements retain `NULL`, while new receipt keys prevent duplicate stock on retries. Do not reset an existing database to apply this upgrade.
+
 Checks: `npm test` (uses and wipes `hearthline_test`), `npm run typecheck`, `npm run lint`, `npm run build`. The component tests alone need no database: `npx vitest run --project ui`.
 The import runs once into an empty database; to load it again run `npm run db:reset` first.
 
