@@ -1,6 +1,6 @@
 # Hearthline Dispatch
 
-The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (Microsoft Fluent 2) has a secure sign-in screen, the application shell, a Dispatch board with manual assignment and scheduling, a read-only Restocking page, a Products page with create, edit and delete, and an Inventory page for receiving, corrections, serial verification and transfers. See [UI](#ui-fluent-2).
+The van stock and dispatch system for a team of field technicians. It imports the team's shared stock book (`docs/04-van-stock-book.xlsx`), records every stock change through one ledger, and applies the business rules behind an HTTP API and a Microsoft Fluent 2 UI. The UI has a secure sign-in screen and the application shell with: a Dispatch board for creating and editing requests, manual assignment and scheduling; a read-only Restocking page with each van's pick list; Fleet, for vans, drivers and service availability; Inventory, for receiving, corrections, serial verification, transfers and the hub's opening count; and a Products page with create, edit and delete. Imports is still marked "Soon". The [demonstration videos](#demonstration-videos) walk through the app and each of the [decisions where the material disagreed or was silent](#decisions-where-the-material-disagreed-or-was-silent). See [UI](#ui-fluent-2).
 
 ## Application preview
 
