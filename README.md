@@ -16,11 +16,11 @@ _YouTube video coming soon._
 
 ### 01 · Stock belongs to the van, not the technician
 
-[![Watch “Stock belongs to the van, not the technician” on YouTube](https://img.youtube.com/vi/-BoYvD-F2kU/hqdefault.jpg)](https://youtu.be/-BoYvD-F2kU)
+[![Watch “Stock belongs to the van, not the technician” on YouTube](https://img.youtube.com/vi/-BoYvD-F2kU/hqdefault.jpg?v=2)](https://youtu.be/-BoYvD-F2kU)
 
 ### 02 · Car-park swaps are recorded as transfers
 
-[![Watch “Car-park swaps are recorded as transfers” on YouTube](https://img.youtube.com/vi/Q3NSlKseyZ0/hqdefault.jpg)](https://youtu.be/Q3NSlKseyZ0)
+[![Watch “Car-park swaps are recorded as transfers” on YouTube](https://img.youtube.com/vi/Q3NSlKseyZ0/hqdefault.jpg?v=2)](https://youtu.be/Q3NSlKseyZ0)
 
 ### 03 · What counts toward a restock
 
