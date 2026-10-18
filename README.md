@@ -52,7 +52,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 10 · Booked visits go through normal assignment
 
-_YouTube video coming soon._
+[![Watch “Booked visits go through normal assignment” on YouTube](https://img.youtube.com/vi/ayglPArD5As/hqdefault.jpg)](https://youtu.be/ayglPArD5As)
 
 ### 11 · Smaller calls: dates, "today", repair wording, customer names
 
