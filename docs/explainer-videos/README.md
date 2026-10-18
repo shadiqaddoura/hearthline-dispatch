@@ -13,7 +13,7 @@ One short screen recording per row of the README table [Decisions where the mate
 | 06 | Serialised stock without serials | [06-serials-needed-before-assignment.mp4](06-serials-needed-before-assignment.mp4) | [script](06-serials-needed-before-assignment.md) | 1:16, narrated, intro card |
 | 07 | Repeated counts | [07-repeated-counts-latest-wins.mp4](07-repeated-counts-latest-wins.mp4) | [script](07-repeated-counts-latest-wins.md) | 1:04, narrated, intro card |
 | 08 | V01 in the garage, Khalid in the pool van | [08-v01-garage-khalid-in-pool-van.mp4](08-v01-garage-khalid-in-pool-van.mp4) | [script](08-v01-garage-khalid-in-pool-van.md) | 1:03, narrated, intro card |
-| 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 1:05 |
+| 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 0:44, narrated, intro card |
 | 10 | Booked visits | [10-booked-visits-rerun-through-assignment.mp4](10-booked-visits-rerun-through-assignment.mp4) | [script](10-booked-visits-rerun-through-assignment.md) | 0:57 |
 | 11 | Smaller calls | [11-smaller-calls-wording-dates-names.mp4](11-smaller-calls-wording-dates-names.mp4) | [script](11-smaller-calls-wording-dates-names.md) | 1:24 |
 | 12 | Hub stock | [12-hub-stock-not-counted.mp4](12-hub-stock-not-counted.mp4) | [script](12-hub-stock-not-counted.md) | 0:47 |
