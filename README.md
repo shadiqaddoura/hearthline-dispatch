@@ -20,7 +20,7 @@ _YouTube video coming soon._
 
 ### 02 · Car-park swaps are recorded as transfers
 
-_YouTube video coming soon._
+[![Watch “Car-park swaps are recorded as transfers” on YouTube](https://img.youtube.com/vi/Q3NSlKseyZ0/hqdefault.jpg)](https://youtu.be/Q3NSlKseyZ0)
 
 ### 03 · What counts toward a restock
 
