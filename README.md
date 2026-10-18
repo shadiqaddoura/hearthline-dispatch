@@ -40,7 +40,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 07 · Repeated counts: the latest count wins
 
-_YouTube video coming soon._
+[![Watch “Repeated counts: the latest count wins” on YouTube](https://img.youtube.com/vi/gmdSIFmGqe4/hqdefault.jpg)](https://youtu.be/gmdSIFmGqe4)
 
 ### 08 · V01 in the garage, Khalid in the pool van
 
