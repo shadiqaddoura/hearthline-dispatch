@@ -207,7 +207,7 @@ Pages are server components that render one client component; Fluent is used onl
 | Products table | Fluent `Table` with `useTableSort`, not `DataGrid`. Narrow screens show two columns (product + SKU, restock policy). | A read-only catalogue is a real `<table>` with sortable headers. Grid keyboard navigation is for interactive cells. |
 | Restock policy display | A flagged policy shows its current setting *and* the flag ("Off · needs review"), plus the note in the details panel. | The kitchen-display decision is provisional (see above). Hiding either half would mislead. |
 | Product data | Only what the products API returns; the page has no built-in fixtures. An empty database shows "No products yet" with how to import, or add the first product. Demo records only exist if someone seeds them from Settings, where each one is tracked so it can be cleared again. | Everything shown is a real record. |
-| Dispatch board scope | Requests waiting for a van, customer work already on a van (assigned or in progress), and every van that isn't sold. A waiting request can be assigned; an assigned job can have its day and position changed. New requests can be created there, and waiting or assigned requests can be edited or cancelled. A request can be deleted unless it is linked to protected import history; in-progress and historical requests can't be edited or deleted. Reassignment and completion aren't on the board yet. | |
+| Dispatch board scope | Requests waiting for a van, customer work already on a van (assigned or in progress), and every van that isn't sold. A waiting request can be assigned; an assigned job can have its day and position changed. New requests can be created there, and waiting or assigned requests can be edited or cancelled. Only an unused, unassigned request with no import history can be deleted; other open work is cancelled instead, so its history is kept. In-progress and historical requests can't be edited or deleted. Reassignment and completion aren't on the board yet. | |
 | Assigning from the board | "Assign to a van…" rechecks eligibility, then offers only vans the backend says can take the job (the rest are listed with reasons). It shows the technician and the job's equipment on the chosen van, asks for a confirmation, and calls `POST /api/jobs/{id}/assign`. That endpoint rechecks under the van's lock and reserves stock; the first schedule is saved in the same transaction. Success is shown only from the server's answer. | The board's eligibility can be minutes old, so the server stays the authority. A single transaction means there's no "assigned but not scheduled" half-state to recover from. |
 | When a save fails | A stock, driver or vehicle change returns the dialog to the van list with the reason, and refreshes the board and eligibility. A refused schedule shows the server's message on the field. If the server doesn't answer, the UI re-reads the job: assigned to the chosen van means it was saved; still waiting means it wasn't, and you can retry. | The outcome is never guessed. Repeated submits are blocked while a request is in flight, and the server rejects assigning a job twice, so a retry can't create a second assignment or reservation. |
 | Who assigned it | The dialog shows the signed-in user's name, read-only. The API records the authenticated user as `assignedBy`, whatever the request contains. | Audit identity comes from the server-verified session, never from a form field. |
@@ -236,36 +236,43 @@ The only expected development console message is a hydration warning when a brow
 
 | | |
 | --- | --- |
+| `POST /api/auth/sign-in` · `logout` · `demo-sign-in` | Password sign-in and sign-out, and the opt-in demo sign-in (404 unless `AUTH_DEMO_SIGN_IN=true`) |
 | `GET /api/dispatch/board?date=` | Requests waiting for a van, assigned and in-progress work (`assignedWork`), each with days waited; each van's stock, driver, open assigned jobs in run order (`assignedJobs`) and jobs that day |
-| `GET/POST /api/jobs`, `GET /api/jobs/{id}` | List (`?status`, `?open=true`), create, read |
+| `GET/POST /api/jobs`, `GET/PATCH/DELETE /api/jobs/{id}` | List (`?status`, `?open=true`), create, read; edit a waiting or assigned request; delete only an unused, unassigned request with no import history (otherwise cancel it) |
 | `GET /api/jobs/{id}/eligible-vans` | Vans ranked: eligible → same zone, with reasons |
 | `POST /api/jobs/{id}/assign` · `reassign` · `start` · `cancel` · `complete`; `PATCH …/schedule` | Lifecycle. `assign` takes an optional first `scheduledFor` and `sequence`; both validate the schedule (409 `CONFLICT` for a taken position, 400 for a past day or a position without a day or van, with `details.fieldErrors`) |
-| `GET /api/vans`, `GET/PATCH /api/vans/{id}`, `GET /api/vans/{id}/stock` | Fleet, driver/status changes, stock with availability |
+| `GET/POST /api/vans`, `GET/PATCH/DELETE /api/vans/{id}`, `GET /api/vans/{id}/stock` | Fleet: list and add vans, edit a van and its driver/status, delete a van, stock with availability |
+| `GET/POST /api/inventory`, `GET /api/inventory/{locationId}/{productId}` | Inventory by location; receiving stock into a van (or the counted hub); one product at one location, with its units, reservations and movement history |
+| `POST /api/inventory/warehouses`, `DELETE /api/inventory/locations/{id}` | Hub (warehouse) setup with its opening physical count; deleting a warehouse location only while it has no stock or history |
 | `POST /api/stock/transfers` · `corrections`, `GET /api/stock/movements` | Inventory |
 | `POST /api/units/verify` | Record a counted unit's serial |
-| `GET /api/restock-jobs`, `POST /api/restock-jobs/{id}/collect`, `POST /api/restock-jobs/recalculate` | Pick lists (with box conversion), collection, broken returns |
-| `GET/POST /api/imports`, `GET /api/imports/{id}/issues` | Import (multipart `file`) and the rows that did not fit |
+| `GET /api/restock-jobs`, `GET /api/restock-jobs/{id}`, `POST /api/restock-jobs/{id}/collect`, `POST /api/restock-jobs/recalculate` | Pick lists (with box conversion), one restock job, collection, broken returns |
+| `GET/POST /api/imports`, `GET /api/imports/{id}`, `GET /api/imports/{id}/issues` | Import (multipart `file`), one import batch, and the rows that did not fit |
 | `GET/POST /api/products` | Catalogue (`ProductDto`) and creating a product (201; 400 with `details.fieldErrors`; 409 `CONFLICT` for a SKU already used) |
 | `GET/PATCH/DELETE /api/products/{id}` | One product with where it is used and what is locked (`ProductDetailDto`); editing (409 `INVALID_STATE` with `details.fieldErrors` for a locked field); deleting (409 `INVALID_STATE` with the references that block it, 409 `CONFLICT` if one appeared mid-delete) |
 | `GET /api/customers` · `technicians` | Reference data |
+| `GET /api/settings/demo-data`, `POST /api/settings/demo-data/{section}/seed` · `clear` | Demo data by section: preview, then seed or clear only the tracked demo records |
+| `GET/POST /api/settings/data-reset` | Preview, then clear all application data. User accounts, sessions, login security records and migration history are kept. |
 
 All business API requests require a valid session. Mutations require a matching Origin header. Audit fields (`assignedBy`, `correctedBy`, etc.) are overwritten from the authenticated user; supplied identity is never trusted.
 
 ## Tests
 
-Backend unit and integration tests cover business rules and authentication against isolated PostgreSQL. Run `npx vitest run --project server`; the suite migrates and clears only `TEST_DATABASE_URL`. Authentication verification and its limitations are documented in [Authentication setup](docs/authentication.md). Legacy jsdom UI tests exist separately and were not run for the authentication change.
+Backend unit and integration tests cover business rules and authentication against isolated PostgreSQL. Run `npx vitest run --project server`; the suite migrates and clears only `TEST_DATABASE_URL`. It has 30 files and 288 tests, and all pass (checked 18 Oct 2026). Authentication verification and its limitations are documented in [Authentication setup](docs/authentication.md).
+
+The jsdom component tests (`npx vitest run --project ui`, 9 files, 79 tests) predate sign-in and some later screen changes, and are out of date: 34 of the 79 currently fail. 29 of those failures (the Dispatch, assignment and app-shell tests) are because the components now need the signed-in user provider, which these tests don't supply; the other 5 (products, sign-in form, focus manager) fail on later screen changes. `npm test` runs both projects, so it reports these failures too.
 
 ## Not done yet / known limits
 
-- Screens: sign-in, Dispatch board (assignment and scheduling), Restocking (read-only) and Products. The narrow/mobile layouts of Dispatch and Restocking haven't been polished yet. Still to build: confirming restock collection and broken returns on the page, reassignment, cancellation and completion on the board, fleet, inventory, restock list, imports, technician phone view.
+- Screens: sign-in, Dispatch board (requests, assignment and scheduling), Restocking (read-only), Fleet, Inventory, Products and Settings. Dispatch has had a mobile layout pass (see [Dispatch cleanup](docs/dispatch-cleanup.md)); the other screens haven't had the same pass yet. Still to build: confirming restock collection and broken returns on the page, reassignment and completion on the board, the Imports screen (import issues are API-only for now), technician phone view.
 - Authentication supports Admin and Operations with equal full access. Self-service password recovery, MFA, and a user-management UI are not included.
 - Products: the review flag and note on a restocking policy can't be cleared from the page (there is no workflow for settling it yet), and a product can't be archived or merged, only deleted while unused. Two people editing the same product at once is last-write-wins on the fields they both change (there is no version check); the SKU, unit and serial rules are still enforced under a row lock.
 - No endpoint to resolve an imported job held for review. It can be assigned or cancelled, but not marked "already done" without a stock effect.
 - Completion may use a job's own reservation plus free stock, never stock reserved for another job; recording work that physically used another job's units means reassigning that job first. A lower stock count can still leave assigned jobs short: they are flagged `RESERVATION_SHORTFALL` (all jobs sharing the shortfall, since which one runs short depends on order), not cancelled or reassigned.
 - Reservations are by quantity, not by serial. There's no "unit found broken" operation; use a correction.
 - Broken equipment on a van with no open restock job can't be returned through the current workflow (returns are recorded against a restock job). The Restocking page only shows vans that have one.
-- Hub shelves aren't counted, and the next-working-day promise isn't measured yet (`requestedOn`, `scheduledFor` and `completedOn` are stored for it).
-- The import is one-shot into an empty database. Serials on multi-product job rows stay on the source row, because the sheet doesn't say which serial belongs to which product.
+- Hub shelves aren't counted by the import. A count can be recorded once with Create warehouse (later changes use Correct count). The next-working-day promise isn't measured yet (`requestedOn`, `scheduledFor` and `completedOn` are stored for it).
+- The import is one-shot into an empty database (to import again, run `npm run db:reset`, or clear all data from Settings). Serials on multi-product job rows stay on the source row, because the sheet doesn't say which serial belongs to which product.
 - Blocking reasons are recomputed for all open requests after each change. That's fine at this size, but would need targeting at scale.
 - Prisma 7's pg adapter logs a pg deprecation warning (parallel queries inside a transaction). This is upstream and harmless on pg 8.
 - Vitest is pinned to 4.x because the project pins `@types/node` 20.
