@@ -56,7 +56,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 11 · Smaller calls: dates, "today", repair wording, customer names
 
-_YouTube video coming soon._
+[![Watch “Smaller calls: dates, today, repair wording, customer names” on YouTube](https://img.youtube.com/vi/MsyDbILJCHs/hqdefault.jpg)](https://youtu.be/MsyDbILJCHs)
 
 ### 12 · Hub stock isn't counted
 
