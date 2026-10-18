@@ -10,9 +10,57 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ## Demonstration Videos
 
+### 00 · Introduction
+
+_YouTube video coming soon._
+
 ### 01 · Stock belongs to the van, not the technician
 
 [![Watch “Stock belongs to the van, not the technician” on YouTube](https://img.youtube.com/vi/-BoYvD-F2kU/hqdefault.jpg)](https://youtu.be/-BoYvD-F2kU)
+
+### 02 · Car-park swaps are recorded as transfers
+
+_YouTube video coming soon._
+
+### 03 · What counts toward a restock
+
+_YouTube video coming soon._
+
+### 04 · Kitchen displays: restocking off, flagged for review
+
+_YouTube video coming soon._
+
+### 05 · Dead units inside the book's counts
+
+_YouTube video coming soon._
+
+### 06 · Serialised stock without serials needs verification
+
+_YouTube video coming soon._
+
+### 07 · Repeated counts: the latest count wins
+
+_YouTube video coming soon._
+
+### 08 · V01 in the garage, Khalid in the pool van
+
+_YouTube video coming soon._
+
+### 09 · Unclear statuses are held for review
+
+_YouTube video coming soon._
+
+### 10 · Booked visits go through normal assignment
+
+_YouTube video coming soon._
+
+### 11 · Smaller calls: dates, "today", repair wording, customer names
+
+_YouTube video coming soon._
+
+### 12 · Hub stock isn't counted
+
+_YouTube video coming soon._
 
 ## Run it
 
