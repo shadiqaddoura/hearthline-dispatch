@@ -66,18 +66,23 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ## Run it
 
-Needs Node 20+ and Docker.
+Needs Node 20.19+ (or 22.12+, or 24+; Prisma 7's minimum), npm, and Docker. Port 5433 must be free for Postgres.
 
 ```bash
+git clone https://github.com/shadiqaddoura/hearthline-dispatch.git
+cd hearthline-dispatch
+cp .env.example .env             # first: npm install runs `prisma generate`, which reads DATABASE_URL from .env
 npm install                      # also generates the Prisma client
-cp .env.example .env
 npm run db:up                    # Postgres 17 on :5433 (dev + test databases)
 npm run db:migrate               # apply migrations
 npm run import:book -- docs/04-van-stock-book.xlsx
+npm run auth:provision -- --demo # create the public demo Admin and Operations accounts
 npm run dev                      # app at http://localhost:3000, API at /api
 ```
 
-Open http://localhost:3000. It redirects to sign-in. First apply migrations and provision the Admin and Operations accounts using [Authentication setup](docs/authentication.md). Both accounts have full access.
+Open http://localhost:3000. It redirects to sign-in, and nothing is reachable without an account. The `--demo` step creates two **public demonstration** accounts (credentials in `server/modules/auth/demo-credentials.ts`) that you can type into the sign-in form. To get one-click "Sign in as Admin" and "Sign in as Operations" buttons instead, set `AUTH_DEMO_SIGN_IN="true"` in `.env` and restart `npm run dev`. For private accounts, skip `--demo` and run `npm run auth:provision -- --interactive`; see [Authentication setup](docs/authentication.md). Both accounts have full access.
+
+`AUTH_ORIGIN` in `.env` must match the address you open (`http://localhost:3000` by default); if you run the app on another port, change it to match, or sign-in is refused.
 
 After pulling updates, stop the development server and run `npx prisma migrate deploy` followed by `npx prisma generate`, then restart with `npm run dev`. These commands use `DATABASE_URL` from the environment (or `.env`); ensure it targets the intended development database. The Inventory receipt migration adds nullable `stock_movements.operationKey` and its unique index: historical movements retain `NULL`, while new receipt keys prevent duplicate stock on retries. Do not reset an existing database to apply this upgrade.
 
