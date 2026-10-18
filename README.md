@@ -60,7 +60,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 12 · Hub stock isn't counted
 
-_YouTube video coming soon._
+[![Watch “Hub stock isn't counted” on YouTube](https://img.youtube.com/vi/4pQrqLgR-FI/hqdefault.jpg)](https://youtu.be/4pQrqLgR-FI)
 
 ## Run it
 
