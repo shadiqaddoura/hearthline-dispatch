@@ -10,7 +10,9 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ## Demonstration Videos
 
-[01 · Stock belongs to the van, not the technician](docs/explainer-videos/01-stock-belongs-to-the-van.mp4)
+### 01 · Stock belongs to the van, not the technician
+
+[![Watch “Stock belongs to the van, not the technician” on YouTube](https://img.youtube.com/vi/-BoYvD-F2kU/hqdefault.jpg)](https://youtu.be/-BoYvD-F2kU)
 
 ## Run it
 
