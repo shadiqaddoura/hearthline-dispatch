@@ -4,7 +4,7 @@ One short screen recording per row of the README table [Decisions where the mate
 
 | # | Decision | Video | Script | Length |
 | --- | --- | --- | --- | --- |
-| 01 | Is stock the van's or the technician's? | [01-stock-belongs-to-the-van.mp4](01-stock-belongs-to-the-van.mp4) | [script](01-stock-belongs-to-the-van.md) | 1:06 |
+| 01 | Is stock the van's or the technician's? | [01-stock-belongs-to-the-van.mp4](01-stock-belongs-to-the-van.mp4) | [script](01-stock-belongs-to-the-van.md) | 0:52, narrated, intro card |
 | 02 | Car-park swaps | [02-car-park-swaps-recorded-as-transfers.mp4](02-car-park-swaps-recorded-as-transfers.mp4) | [script](02-car-park-swaps-recorded-as-transfers.md) | 2:15 |
 | 03 | What counts toward a restock | [03-what-counts-toward-a-restock.mp4](03-what-counts-toward-a-restock.mp4) | [script](03-what-counts-toward-a-restock.md) | 1:14 |
 | 04 | Kitchen displays | [04-kitchen-displays-flagged-for-review.mp4](04-kitchen-displays-flagged-for-review.mp4) | [script](04-kitchen-displays-flagged-for-review.md) | 0:56 |

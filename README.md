@@ -8,6 +8,10 @@ The van stock and dispatch system. Milestone 1 is the backend: database, busines
 
 _The Products Catalog shows the shared application shell and seeded product configuration data._
 
+## Demonstration Videos
+
+[01 · Stock belongs to the van, not the technician](docs/explainer-videos/01-stock-belongs-to-the-van.mp4)
+
 ## Run it
 
 Needs Node 20+ and Docker.
