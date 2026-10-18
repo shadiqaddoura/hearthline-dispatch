@@ -1,0 +1,39 @@
+# Explainer videos: decisions where the material disagreed or was silent
+
+One short screen recording per row of the README table [Decisions where the material disagreed or was silent](../../README.md#decisions-where-the-material-disagreed-or-was-silent). Each video has a voiceover recording (`.mp3`) and a script (`.md`) with the same file name. All 13 videos are narrated. Each decision video opens on a white card that states the issue and the decision, then shows still app screens with a teal box around the area each line talks about.
+
+| # | Decision | Video | Script | Length |
+| --- | --- | --- | --- | --- |
+| 00 | Introduction: who built it, the problem, the stack | [00-introduction.mp4](00-introduction.mp4) | [script](00-introduction.md) | 1:19, narrated |
+| 01 | Is stock the van's or the technician's? | [01-stock-belongs-to-the-van.mp4](01-stock-belongs-to-the-van.mp4) | [script](01-stock-belongs-to-the-van.md) | 0:52, narrated, intro card |
+| 02 | Car-park swaps | [02-car-park-swaps-recorded-as-transfers.mp4](02-car-park-swaps-recorded-as-transfers.mp4) | [script](02-car-park-swaps-recorded-as-transfers.md) | 1:18, narrated, intro card |
+| 03 | What counts toward a restock | [03-what-counts-toward-a-restock.mp4](03-what-counts-toward-a-restock.mp4) | [script](03-what-counts-toward-a-restock.md) | 1:29, narrated, intro card |
+| 04 | Kitchen displays | [04-kitchen-displays-flagged-for-review.mp4](04-kitchen-displays-flagged-for-review.mp4) | [script](04-kitchen-displays-flagged-for-review.md) | 0:53, narrated, intro card |
+| 05 | Dead units inside the book's counts | [05-dead-units-moved-to-broken.mp4](05-dead-units-moved-to-broken.mp4) | [script](05-dead-units-moved-to-broken.md) | 1:01, narrated, intro card |
+| 06 | Serialised stock without serials | [06-serials-needed-before-assignment.mp4](06-serials-needed-before-assignment.mp4) | [script](06-serials-needed-before-assignment.md) | 1:16, narrated, intro card |
+| 07 | Repeated counts | [07-repeated-counts-latest-wins.mp4](07-repeated-counts-latest-wins.mp4) | [script](07-repeated-counts-latest-wins.md) | 1:04, narrated, intro card |
+| 08 | V01 in the garage, Khalid in the pool van | [08-v01-garage-khalid-in-pool-van.mp4](08-v01-garage-khalid-in-pool-van.mp4) | [script](08-v01-garage-khalid-in-pool-van.md) | 1:03, narrated, intro card |
+| 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 0:44, narrated, intro card |
+| 10 | Booked visits | [10-booked-visits-rerun-through-assignment.mp4](10-booked-visits-rerun-through-assignment.mp4) | [script](10-booked-visits-rerun-through-assignment.md) | 1:15, narrated, intro card |
+| 11 | Smaller calls | [11-smaller-calls-wording-dates-names.mp4](11-smaller-calls-wording-dates-names.mp4) | [script](11-smaller-calls-wording-dates-names.md) | 0:53, narrated, intro card |
+| 12 | Hub stock | [12-hub-stock-not-counted.mp4](12-hub-stock-not-counted.mp4) | [script](12-hub-stock-not-counted.md) | 1:02, narrated, intro card |
+
+## Parts of the decisions the app doesn't show
+
+Every decision has a video, but these parts aren't visible anywhere in the current app, so the videos don't claim them. Most are recorded as import issues, which are available only from `GET /api/imports/{id}/issues` because the Imports screen is still "Soon".
+
+- **03:** Reservations not being subtracted (the imported data has no reservations; only the rule text on the Restocking page is shown). Also the 3/4-van lists and Pavel's old cable minimum of 20.
+- **04:** "Stock and jobs are unaffected": no van holds kitchen displays and no job uses them, so there's nothing to show staying unaffected.
+- **05:** The 11th dead unit, held for review on a job with a blank status.
+- **07:** The superseded counts and same-day events that weren't applied.
+- **08:** V01 jobs after 18 Aug having no stock effect (completed jobs aren't listed anywhere).
+- **09:** The 7 "Restock?" rows (they didn't become jobs or restock lines).
+- **11:** The Arabic customer name read as Zaytoun Grill (left out of the video, since the flag is only in the import issues). The original spellings ("04/10/2026", "fix"; only the interpreted values are on screen). Also paper on job rows without a unit.
+- **12:** Where the hub's working counts come from: there's no real shelf count in the material, so the video uses sample working numbers. Also the hub as a movement destination (no transfer to it was made).
+
+## How these were recorded
+
+- **Data:** the stock book (`docs/04-van-stock-book.xlsx`) imported into a separate database, `hearthline_video` (same Postgres container). The development database `hearthline` wasn't touched. The app ran with `next dev` on port 3100 against that database, signed in with the demo Operations account.
+- **Recording:** real screen captures of the Chrome viewport (1412×834, 30 fps, H.264), with the app driven through the Claude in Chrome extension. Each step is held as a single clean frame from the take, so no mouse pointer is in frame. The extension's "debugging this browser" bar is cropped out.
+- **Voiceover:** each voiceover was recorded in one take, transcribed locally to find where it starts, and cut at its natural pauses with no change to speed or pitch. The teal boxes and the intro cards are the only things added to the screens.
+- **Data changes made on camera** (demo database only): 01 removes V08's driver (put back afterwards), 02 transfers 2 cables from V03 to V05, 06 records the test serial `SN-TEST-0001` on a V02 printer, 07 corrects V05's POS terminal count from 2 to 3, 10 adds two receipt printers (`SN-TEST-0002`, `SN-TEST-0003`) to V05 and assigns Saffron & Co to it, and 12 records the hub's opening count (sample working numbers). To re-record from a clean state, drop and re-create `hearthline_video` and run the import again.
