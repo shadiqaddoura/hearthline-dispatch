@@ -15,7 +15,7 @@ One short screen recording per row of the README table [Decisions where the mate
 | 08 | V01 in the garage, Khalid in the pool van | [08-v01-garage-khalid-in-pool-van.mp4](08-v01-garage-khalid-in-pool-van.mp4) | [script](08-v01-garage-khalid-in-pool-van.md) | 1:03, narrated, intro card |
 | 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 0:44, narrated, intro card |
 | 10 | Booked visits | [10-booked-visits-rerun-through-assignment.mp4](10-booked-visits-rerun-through-assignment.mp4) | [script](10-booked-visits-rerun-through-assignment.md) | 1:15, narrated, intro card |
-| 11 | Smaller calls | [11-smaller-calls-wording-dates-names.mp4](11-smaller-calls-wording-dates-names.mp4) | [script](11-smaller-calls-wording-dates-names.md) | 1:24 |
+| 11 | Smaller calls | [11-smaller-calls-wording-dates-names.mp4](11-smaller-calls-wording-dates-names.mp4) | [script](11-smaller-calls-wording-dates-names.md) | 0:53, narrated, intro card |
 | 12 | Hub stock | [12-hub-stock-not-counted.mp4](12-hub-stock-not-counted.mp4) | [script](12-hub-stock-not-counted.md) | 0:47 |
 
 ## Parts of the decisions the app doesn't show
