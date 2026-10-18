@@ -24,7 +24,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 03 · What counts toward a restock
 
-_YouTube video coming soon._
+[![Watch “What counts toward a restock” on YouTube](https://img.youtube.com/vi/wESJpxwznfI/hqdefault.jpg)](https://youtu.be/wESJpxwznfI)
 
 ### 04 · Kitchen displays: restocking off, flagged for review
 
