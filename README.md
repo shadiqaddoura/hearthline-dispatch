@@ -2,6 +2,12 @@
 
 The van stock and dispatch system. Milestone 1 is the backend: database, business rules, import of the stock book, and an HTTP API. The UI (Microsoft Fluent 2) has a secure sign-in screen, the application shell, a Dispatch board with manual assignment and scheduling, a read-only Restocking page, a Products page with create, edit and delete, and an Inventory page for receiving, corrections, serial verification and transfers. See [UI](#ui-fluent-2).
 
+## Application preview
+
+![Hearthline Dispatch products catalog](public/readme/products-catalog.png)
+
+_The Products Catalog shows the shared application shell and seeded product configuration data._
+
 ## Run it
 
 Needs Node 20+ and Docker.
