@@ -10,7 +10,7 @@ One short screen recording per row of the README table [Decisions where the mate
 | 03 | What counts toward a restock | [03-what-counts-toward-a-restock.mp4](03-what-counts-toward-a-restock.mp4) | [script](03-what-counts-toward-a-restock.md) | 1:29, narrated, intro card |
 | 04 | Kitchen displays | [04-kitchen-displays-flagged-for-review.mp4](04-kitchen-displays-flagged-for-review.mp4) | [script](04-kitchen-displays-flagged-for-review.md) | 0:53, narrated, intro card |
 | 05 | Dead units inside the book's counts | [05-dead-units-moved-to-broken.mp4](05-dead-units-moved-to-broken.mp4) | [script](05-dead-units-moved-to-broken.md) | 1:01, narrated, intro card |
-| 06 | Serialised stock without serials | [06-serials-needed-before-assignment.mp4](06-serials-needed-before-assignment.mp4) | [script](06-serials-needed-before-assignment.md) | 2:04 |
+| 06 | Serialised stock without serials | [06-serials-needed-before-assignment.mp4](06-serials-needed-before-assignment.mp4) | [script](06-serials-needed-before-assignment.md) | 1:16, narrated, intro card |
 | 07 | Repeated counts | [07-repeated-counts-latest-wins.mp4](07-repeated-counts-latest-wins.mp4) | [script](07-repeated-counts-latest-wins.md) | 0:55 |
 | 08 | V01 in the garage, Khalid in the pool van | [08-v01-garage-khalid-in-pool-van.mp4](08-v01-garage-khalid-in-pool-van.mp4) | [script](08-v01-garage-khalid-in-pool-van.md) | 1:04 |
 | 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 1:05 |
