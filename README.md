@@ -12,7 +12,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 00 · Introduction
 
-_YouTube video coming soon._
+[![Watch “Hearthline Dispatch — Introduction” on YouTube](https://img.youtube.com/vi/G9qsRD3-vBw/hqdefault.jpg)](https://youtu.be/G9qsRD3-vBw)
 
 ### 01 · Stock belongs to the van, not the technician
 
