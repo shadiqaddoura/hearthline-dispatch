@@ -10,6 +10,8 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ## Demonstration Videos
 
+[▶ Watch the full Hearthline Dispatch explainer playlist on YouTube](https://www.youtube.com/playlist?list=PLXJaXrm5tiFI)
+
 ### 00 · Introduction
 
 [![Watch “Hearthline Dispatch — Introduction” on YouTube](https://img.youtube.com/vi/G9qsRD3-vBw/hqdefault.jpg)](https://youtu.be/G9qsRD3-vBw)
