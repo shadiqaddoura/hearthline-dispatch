@@ -32,7 +32,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 05 · Dead units inside the book's counts
 
-_YouTube video coming soon._
+[![Watch “Dead units inside the book's counts” on YouTube](https://img.youtube.com/vi/Iw7h1BAlBZs/hqdefault.jpg)](https://youtu.be/Iw7h1BAlBZs)
 
 ### 06 · Serialised stock without serials needs verification
 
