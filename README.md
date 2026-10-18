@@ -44,11 +44,11 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 08 · V01 in the garage, Khalid in the pool van
 
-_YouTube video coming soon._
+[![Watch “V01 in the garage, Khalid in the pool van” on YouTube](https://img.youtube.com/vi/V5jQnpPZ67g/hqdefault.jpg)](https://youtu.be/V5jQnpPZ67g)
 
 ### 09 · Unclear statuses are held for review
 
-_YouTube video coming soon._
+[![Watch “Unclear statuses are held for review” on YouTube](https://img.youtube.com/vi/wVAkwx0K-To/hqdefault.jpg)](https://youtu.be/wVAkwx0K-To)
 
 ### 10 · Booked visits go through normal assignment
 
