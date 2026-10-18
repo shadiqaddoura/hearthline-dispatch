@@ -36,7 +36,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 06 · Serialised stock without serials needs verification
 
-_YouTube video coming soon._
+[![Watch “Serialised stock without serials needs verification” on YouTube](https://img.youtube.com/vi/IZS6WFIjvaw/hqdefault.jpg)](https://youtu.be/IZS6WFIjvaw)
 
 ### 07 · Repeated counts: the latest count wins
 
