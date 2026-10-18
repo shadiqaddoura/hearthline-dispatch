@@ -1,6 +1,6 @@
 # Explainer videos: decisions where the material disagreed or was silent
 
-One short screen recording per row of the README table [Decisions where the material disagreed or was silent](../../README.md#decisions-where-the-material-disagreed-or-was-silent). Each video has a voiceover script with the same file name (`.md`). The videos have no audio yet: record each script, and the audio can then be added to the matching video.
+One short screen recording per row of the README table [Decisions where the material disagreed or was silent](../../README.md#decisions-where-the-material-disagreed-or-was-silent). Each video has a voiceover recording (`.mp3`) and a script (`.md`) with the same file name. All 13 videos are narrated. Each decision video opens on a white card that states the issue and the decision, then shows still app screens with a teal box around the area each line talks about.
 
 | # | Decision | Video | Script | Length |
 | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ One short screen recording per row of the README table [Decisions where the mate
 | 09 | Unclear statuses and the 7 "Restock?" rows | [09-unclear-statuses-held-for-review.mp4](09-unclear-statuses-held-for-review.mp4) | [script](09-unclear-statuses-held-for-review.md) | 0:44, narrated, intro card |
 | 10 | Booked visits | [10-booked-visits-rerun-through-assignment.mp4](10-booked-visits-rerun-through-assignment.mp4) | [script](10-booked-visits-rerun-through-assignment.md) | 1:15, narrated, intro card |
 | 11 | Smaller calls | [11-smaller-calls-wording-dates-names.mp4](11-smaller-calls-wording-dates-names.mp4) | [script](11-smaller-calls-wording-dates-names.md) | 0:53, narrated, intro card |
-| 12 | Hub stock | [12-hub-stock-not-counted.mp4](12-hub-stock-not-counted.mp4) | [script](12-hub-stock-not-counted.md) | 0:47 |
+| 12 | Hub stock | [12-hub-stock-not-counted.mp4](12-hub-stock-not-counted.mp4) | [script](12-hub-stock-not-counted.md) | 1:02, narrated, intro card |
 
 ## Parts of the decisions the app doesn't show
 
@@ -28,12 +28,12 @@ Every decision has a video, but these parts aren't visible anywhere in the curre
 - **07:** The superseded counts and same-day events that weren't applied.
 - **08:** V01 jobs after 18 Aug having no stock effect (completed jobs aren't listed anywhere).
 - **09:** The 7 "Restock?" rows (they didn't become jobs or restock lines).
-- **11:** The original spellings (Arabic customer name, "04/10/2026", "fix"; only the interpreted values are on screen). Also paper on job rows without a unit.
-- **12:** The hub as a movement destination (Hub is listed in the Transfer form, but no transfer to it was made).
+- **11:** The Arabic customer name read as Zaytoun Grill (left out of the video, since the flag is only in the import issues). The original spellings ("04/10/2026", "fix"; only the interpreted values are on screen). Also paper on job rows without a unit.
+- **12:** Where the hub's working counts come from: there's no real shelf count in the material, so the video uses sample working numbers. Also the hub as a movement destination (no transfer to it was made).
 
 ## How these were recorded
 
 - **Data:** the stock book (`docs/04-van-stock-book.xlsx`) imported into a separate database, `hearthline_video` (same Postgres container). The development database `hearthline` wasn't touched. The app ran with `next dev` on port 3100 against that database, signed in with the demo Operations account.
-- **Recording:** real screen captures of the Chrome viewport (1412×794, 30 fps, H.264). The mouse pointer is the real system pointer. Long pauses between steps were cut out; nothing was added.
-- **Visible extras:** clicks went through the Claude in Chrome extension. The extension draws a faint pink glow at the page edges and its own small pointer marker, which mostly sits under the real pointer. The extension's "debugging this browser" bar is cropped out.
-- **Data changes made on camera** (demo database only): 01 removes V08's driver (put back afterwards), 06 records the test serial `SN-TEST-0001` on a V02 printer, 07 corrects V05's POS terminal count from 2 to 3, 10 adds two receipt printers (`SN-TEST-0002`, `SN-TEST-0003`) to V05 and assigns Saffron & Co to it, and 02 transfers 2 cables from V03 to V05. To re-record from a clean state, drop and re-create `hearthline_video` and run the import again.
+- **Recording:** real screen captures of the Chrome viewport (1412×834, 30 fps, H.264), with the app driven through the Claude in Chrome extension. Each step is held as a single clean frame from the take, so no mouse pointer is in frame. The extension's "debugging this browser" bar is cropped out.
+- **Voiceover:** each voiceover was recorded in one take, transcribed locally to find where it starts, and cut at its natural pauses with no change to speed or pitch. The teal boxes and the intro cards are the only things added to the screens.
+- **Data changes made on camera** (demo database only): 01 removes V08's driver (put back afterwards), 02 transfers 2 cables from V03 to V05, 06 records the test serial `SN-TEST-0001` on a V02 printer, 07 corrects V05's POS terminal count from 2 to 3, 10 adds two receipt printers (`SN-TEST-0002`, `SN-TEST-0003`) to V05 and assigns Saffron & Co to it, and 12 records the hub's opening count (sample working numbers). To re-record from a clean state, drop and re-create `hearthline_video` and run the import again.
