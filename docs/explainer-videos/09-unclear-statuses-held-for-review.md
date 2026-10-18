@@ -23,7 +23,7 @@ The video opens on a white card that states the issue and the decision. After th
 ## What the video can't show
 
 - **The 7 "Restock?" rows:** these didn't become jobs or restock lines, so they don't appear on any screen. The import records each one as `UNCLEAR_RESTOCK_ROW`, available from `GET /api/imports/{id}/issues`. The Imports screen is marked "Soon". The intro card mentions them, but the voiceover doesn't.
-- There's no screen action to resolve a held job as "already done" (README, "Not done yet").
+- There's no screen action to resolve a held job as "already done". It can be assigned or cancelled, but there is no endpoint that marks it done without a stock effect.
 
 ## Notes
 

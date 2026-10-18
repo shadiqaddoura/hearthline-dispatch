@@ -20,7 +20,7 @@ The video opens on a white card that states the issue and the decision. After th
 ## What the video can't show
 
 - **"Stock and jobs are unaffected":** the stock book has no kitchen displays on any van and no jobs that use them ("Where it is used: Nothing yet"). There's nothing in the data to show staying unaffected. The script only says the policy is limited to restocking.
-- The review flag can't be cleared from the page yet (README, "Not done yet").
+- The review flag can't be cleared from the page yet: there is no workflow for settling a provisional restocking policy.
 
 ## Notes
 
