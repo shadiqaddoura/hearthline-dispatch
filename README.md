@@ -91,26 +91,31 @@ The import runs once into an empty database; to load it again run `npm run db:re
 
 ## Architecture
 
-One Next.js app (App Router, TypeScript). Route Handlers are the API; all logic lives in server-only modules.
+One Next.js app (App Router, TypeScript). Route Handlers are the API; all logic lives in server-only modules. The screens are in the same app and use the same API (see [UI](#ui-fluent-2)). Every page and API route, apart from sign-in itself, needs a signed-in session.
 
 ```
-app/api/**/route.ts   HTTP only: validate with a contract → call one service → { data } | { error }
-lib/contracts/        Zod request schemas + response types, shareable with the future UI
-server/http/          AppError (code → HTTP status), handle(), readJson()
+proxy.ts              early check only: no session cookie → redirect to /sign-in (pages) or 401 (API)
+app/api/**/route.ts   HTTP only: check the session and origin → validate with a contract → call one service → { data } | { error }
+app/(auth), app/(app) the sign-in screen and the signed-in screens; components/ holds their UI (see UI)
+lib/contracts/        Zod request schemas + response types, shared by the API and the UI
+server/http/          AppError (code → HTTP status), handle() (session, origin, errors), readJson(), readQuery()
 server/db/            Prisma client, runInTransaction(), row-lock helpers
 server/modules/
-  fleet/              vans, drivers, van status
-  inventory/          availability rules, stock ledger, transfers, corrections, serial verification
-  jobs/               create, schedule, start, cancel, complete
+  auth/               sessions, password hashing, sign-in and sign-out, demo sign-in, account provisioning
+  fleet/              vans, drivers, van status; adding, editing and deleting vans
+  inventory/          availability rules, stock ledger, receipts, transfers, corrections, serial verification, hub (warehouse) setup
+  jobs/               create, edit, delete, schedule, start, cancel, complete
   dispatch/           van eligibility, assign/reassign, blocking reasons, dispatch board
+  products/           catalogue create, edit and delete; which fields are locked and what blocks a delete
   restocking/         restock formula, pick quantities, one open restock job per van
   import/             stock-book pipeline (independent of HTTP)
-scripts/import-book.ts
+  settings/           demo data sections, and clearing all application data
+scripts/              import-book.ts, provision-users.ts (with provision-input.ts for interactive entry)
 prisma/schema.prisma, prisma/migrations/
-tests/unit, tests/integration
+tests/unit, tests/integration, tests/ui (shared setup in tests/support)
 ```
 
-Each module has a `*.service.ts` (business rules, transactions) and, where it helps, a `*.repository.ts` (queries) or a pure file (`availability.ts`, `eligibility.ts`, `restock-calculator.ts`, `pick-quantity.ts`, `import/plan.ts`) that holds the rule on its own so it can be tested without a database.
+Each module has a `*.service.ts` (business rules, transactions) and, where it helps, a `*.repository.ts` (queries) or a pure file (`availability.ts`, `eligibility.ts`, `restock-calculator.ts`, `pick-quantity.ts`, `product-rules.ts`, `import/plan.ts`) that holds the rule on its own so it can be tested without a database.
 
 **How stock is represented.** Four facts are stored separately, so nothing is double-counted:
 
@@ -123,9 +128,9 @@ Each module has a `*.service.ts` (business rules, transactions) and, where it he
 
 `available = assignable working stock − active reservations`, where "assignable" means verified units for serialised products. Broken stock is never available.
 
-**One writer.** `inventory/stock-ledger.ts#moveStock` is the only code that changes balances. In the caller's transaction, it updates the balance, the unit rows, and writes the movement.
+**One writer.** `inventory/stock-ledger.ts#moveStock` is the only code that changes balances. In the caller's transaction, it updates the balance, the unit rows, and writes the movement. The only other code that touches balances is in Settings: clearing a demo data section deletes the rows it seeded, and "clear all data" empties the operational tables. Neither moves stock.
 
-**Concurrency.** Every operation that affects availability locks rows in a fixed order: job → van locations (sorted by id) → restock job. "Check availability, then reserve" therefore runs one transaction at a time per van, and reassignments in opposite directions cannot deadlock. The concurrency tests fail if the location lock is removed (checked). Completion locks the job first; a completed job returns `alreadyCompleted: true` and touches nothing. `JobCompletion.jobId` is also unique as a backstop.
+**Concurrency.** Every operation that affects availability locks rows in a fixed order: job → locations (vans, and the hub once it is counted; sorted by id) → restock job. "Check availability, then reserve" therefore runs one transaction at a time per van, and reassignments in opposite directions cannot deadlock. The concurrency tests fail if the location lock is removed (checked). Completion locks the job first; a completed job returns `alreadyCompleted: true` and touches nothing. `JobCompletion.jobId` is also unique as a backstop.
 
 **Blocking reasons** (`NO_ELIGIBLE_VAN`, `UNITS_NEED_VERIFICATION`, `IMPORT_NEEDS_REVIEW`, and `RESERVATION_SHORTFALL` for assigned jobs whose van no longer covers their reservations) are separate from job status. Open requests and assigned jobs are re-evaluated after every stock or reservation change. This runs after the change commits, in its own transaction, so it can neither deadlock with nor roll back the operation. Dispatch stays manual: nothing is auto-assigned.
 
