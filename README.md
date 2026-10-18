@@ -28,7 +28,7 @@ _The Products Catalog shows the shared application shell and seeded product conf
 
 ### 04 · Kitchen displays: restocking off, flagged for review
 
-_YouTube video coming soon._
+[![Watch “Kitchen displays: restocking off, flagged for review” on YouTube](https://img.youtube.com/vi/PI04svb_xfg/hqdefault.jpg)](https://youtu.be/PI04svb_xfg)
 
 ### 05 · Dead units inside the book's counts
 
